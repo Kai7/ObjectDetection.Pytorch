@@ -14,7 +14,9 @@ from pycocotools.coco import COCO
 if __name__ == '__main__':
     from pyflirtools import FLIR
 else:
-    from retinanet.pyflirtools import FLIR
+    from datasettool.pyflirtools import FLIR
+
+from datasettool.cvidatatools import CVIData
 
 import skimage.io
 import skimage.transform
@@ -23,6 +25,122 @@ import skimage
 
 from PIL import Image
 
+import pdb
+
+class CVIDataset(Dataset):
+    """CVI dataset."""
+    def __init__(self, root_dir, set_name='train', annotation_name='annotations.json', transform=None):
+        """
+        Args:
+            root_dir (string): CVI directory.
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        self.root_dir = root_dir
+        self.set_name = set_name
+        self.transform = transform
+
+        self.cvi_data = CVIData(os.path.join(self.root_dir, self.set_name , annotation_name))
+        print('Annotation File Path: ', os.path.join(self.root_dir, self.set_name , annotation_name))
+        self.image_ids = self.cvi_data.getImgIds()
+
+        self.load_classes()
+
+    def load_classes(self):
+        # load class names (name -> label)
+        categories = self.cvi_data.loadCats(self.cvi_data.getCatIds())
+        categories.sort(key=lambda x: x['id'])
+
+        self.classes = {}
+        self.cvidata_labels = {}
+        self.cvidata_labels_inverse = {}
+        for c in categories:
+            self.cvidata_labels[len(self.classes)] = c['id']
+            self.cvidata_labels_inverse[c['id']] = len(self.classes)
+            self.classes[c['name']] = len(self.classes)
+
+        # also load the reverse (label -> name)
+        self.labels = {}
+        for key, value in self.classes.items():
+            self.labels[value] = key
+
+    def __len__(self):
+        return len(self.image_ids)
+
+    def __getitem__(self, idx):
+        img = self.load_image(idx)
+        annot = self.load_annotations(idx)
+        # print('image')
+        # print(img)
+        # print('annotation')
+        # print(annot)
+        sample = {'img': img, 'annot': annot}
+        if self.transform:
+            sample = self.transform(sample)
+        return sample
+
+    def load_image(self, image_index):
+        image_info = self.cvi_data.loadImgs(self.image_ids[image_index])[0]
+        path = os.path.join(self.root_dir, self.set_name, image_info['file_name'])
+        # img = cv2.imread(path)
+        # path = os.path.join(self.root_dir, 'images',
+        #                     self.set_name, image_info['file_name'])
+        # print('File Name:', image_info['file_name'])
+        # print('Path:', path)
+        # if len(img.shape) == 2:
+        #     img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = skimage.io.imread(path)
+
+        if len(img.shape) == 2:
+            img = skimage.color.gray2rgb(img)
+
+        return img.astype(np.float32)/255.0
+
+
+    def load_annotations(self, image_index):
+        # get ground truth annotations
+        annotations_ids = self.cvi_data.getAnnIds(
+            imgIds=self.image_ids[image_index], iscrowd=False)
+        annotations = np.zeros((0, 5))
+
+        # some images appear to miss annotations (like image with id 257034)
+        if len(annotations_ids) == 0:
+            return annotations
+
+        # parse annotations
+        cvidata_annotations = self.cvi_data.loadAnns(annotations_ids)
+        for idx, a in enumerate(cvidata_annotations):
+            if a['category_id'] > 2:
+                continue
+
+            # some annotations have basically no width / height, skip them
+            if a['bbox'][2] < 1 or a['bbox'][3] < 1:
+                continue
+
+            annotation = np.zeros((1, 5))
+            annotation[0, :4] = a['bbox']
+            annotation[0, 4] = self.cvidata_label_to_label(a['category_id'])
+            annotations = np.append(annotations, annotation, axis=0)
+
+        # transform from [x, y, w, h] to [x1, y1, x2, y2]
+        annotations[:, 2] = annotations[:, 0] + annotations[:, 2]
+        annotations[:, 3] = annotations[:, 1] + annotations[:, 3]
+
+        return annotations
+
+    def cvidata_label_to_label(self, cvidata_label):
+        return self.cvidata_labels_inverse[cvidata_label]
+
+    def label_to_cvidata_label(self, label):
+        return self.cvidata_labels[label]
+
+    def image_aspect_ratio(self, image_index):
+        image = self.cvi_data.loadImgs(self.image_ids[image_index])[0]
+        return float(image['width']) / float(image['height'])
+
+    def num_classes(self):
+        return len(self.cvi_data.dataset['categories'])
 
 class CocoDataset(Dataset):
     """Coco dataset."""
@@ -144,6 +262,9 @@ class FLIRDataset(Dataset):
         self.flir = FLIR(os.path.join(self.root_dir, self.set_name , annotation_name))
         print('Annotation File Path: ', os.path.join(self.root_dir, self.set_name , annotation_name))
         self.image_ids = self.flir.getImgIds()
+
+        print(self.flir.dataset['categories'])
+        # exit(0)
 
         self.load_classes()
 
@@ -460,16 +581,22 @@ def collater(data):
 
 class Resizer(object):
     """Convert ndarrays in sample to Tensors."""
-    def __init__(self, min_side=608, max_side=1024, **kwargs):
-        self.min_side = min_side
-        self.max_side = max_side
+    def __init__(self, min_side=608, max_side=1024, demo=False, **kwargs):
+        self.min_side  = min_side
+        self.max_side  = max_side
+        #self.base_size = 32
+        self.base_size = 16
+        self.demo = demo
 
         if 'logger' in kwargs:
             kwargs['logger'].info('Resizer.Min_Side   : {}'.format(self.min_side))
             kwargs['logger'].info('Resizer.Max_Side   : {}'.format(self.max_side))
 
     def __call__(self, sample):
-        image, annots = sample['img'], sample['annot']
+        if not self.demo:
+            image, annots = sample['img'], sample['annot']
+        else: 
+            image = sample
         rows, cols, cns = image.shape
         smallest_side = min(rows, cols)
 
@@ -487,16 +614,21 @@ class Resizer(object):
         image = skimage.transform.resize(image, (int(round(rows*scale)), int(round((cols*scale)))))
         rows, cols, cns = image.shape
 
-        pad_w = 32 - rows%32
-        pad_h = 32 - cols%32
+        #pad_w = self.base_size - rows%self.base_size
+        #pad_h = self.base_size - cols%self.base_size
+
+        pad_w = (self.base_size - rows%self.base_size)%self.base_size
+        pad_h = (self.base_size - cols%self.base_size)%self.base_size
 
         new_image = np.zeros((rows + pad_w, cols + pad_h, cns)).astype(np.float32)
         new_image[:rows, :cols, :] = image.astype(np.float32)
         # print(new_image.shape)
 
-        annots[:, :4] *= scale
-
-        return {'img': torch.from_numpy(new_image), 'annot': torch.from_numpy(annots), 'scale': scale}
+        if not self.demo:
+            annots[:, :4] *= scale
+            return {'img': torch.from_numpy(new_image), 'annot': torch.from_numpy(annots), 'scale': scale}
+        else:
+            return torch.from_numpy(new_image)
 
 # class Resizer(object):
 #     """Convert ndarrays in sample to Tensors."""
@@ -552,15 +684,18 @@ class Augmenter(object):
 
 class Normalizer(object):
 
-    def __init__(self):
+    def __init__(self, demo=False):
         self.mean = np.array([[[0.485, 0.456, 0.406]]])
-        self.std = np.array([[[0.229, 0.224, 0.225]]])
+        self.std  = np.array([[[0.229, 0.224, 0.225]]])
+        self.demo = demo
 
     def __call__(self, sample):
-
-        image, annots = sample['img'], sample['annot']
-
-        return {'img':((image.astype(np.float32)-self.mean)/self.std), 'annot': annots}
+        if not self.demo:
+            image, annots = sample['img'], sample['annot']
+            return {'img':((image.astype(np.float32)-self.mean)/self.std), 'annot': annots}
+        else:
+            image = sample
+            return (image.astype(np.float32)-self.mean)/self.std
 
 class UnNormalizer(object):
     def __init__(self, mean=None, std=None):

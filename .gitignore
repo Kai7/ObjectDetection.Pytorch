@@ -7,3 +7,5 @@ log/
 saved/
 *.json
 *.pth
+*.onnx
+

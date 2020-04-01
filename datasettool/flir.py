@@ -14,7 +14,7 @@ from torch.utils.data.sampler import Sampler
 if __name__ == '__main__':
     from pyflirtools import FLIR
 else:
-    from datasets.pyflirtools import FLIR
+    from datasettool.pyflirtools import FLIR
 
 import skimage.io
 import skimage.transform

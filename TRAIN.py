@@ -49,27 +49,6 @@ parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
 parser.add_argument("--log", default=False, action="store_true" , 
                     help="Write log file.")
 
-def test(dataset, model, epoch, args, logger=None):
-    logger.info("{} epoch: \t start validation....".format(epoch))
-    # model = model.module
-    model.eval()
-    model.is_training = False
-    with torch.no_grad():
-        if(args.dataset == 'VOC'):
-            evaluate(dataset, model)
-        elif args.dataset == 'COCO':
-            evaluate_coco(dataset, model)
-        elif args.dataset == 'FLIR':
-            summarize = evaluate_flir(dataset, model)
-            if logger:
-                logger.info('\n{}'.format(summarize))
-        elif args.dataset == 'thermal':
-            summarize = coco_evaluate_cvidata(dataset, model)
-            if logger:
-                logger.info('\n{}'.format(summarize))
-            
-        else:
-            print('ERROR: Unknow dataset.')
 
 def main():
     args = parser.parse_args()
@@ -107,11 +86,6 @@ def main():
                                             Normalizer(), 
                                             Augmenter(), 
                                             Resizer()]))
-        dataset_valid = CocoDataset(args.dataset_root, set_name='val2017',
-                                  transform=transforms.Compose(
-                                      [
-                                          Normalizer(), 
-                                          Resizer()]))
     elif args.dataset == 'FLIR':
         if args.dataset_root is None:
             raise ValueError('Must provide --dataset_root when training on FLIR,')
@@ -122,11 +96,6 @@ def main():
                                             Normalizer(), 
                                             Augmenter(), 
                                             Resizer(min_side=int(512*_scale), max_side=int(640*_scale), logger=net_logger)]))
-        dataset_valid = FLIRDataset(args.dataset_root, set_name='val',
-                                  transform=transforms.Compose(
-                                      [
-                                          Normalizer(), 
-                                          Resizer(min_side=int(512*_scale), max_side=int(640*_scale))]))
     elif args.dataset == 'thermal':
         if args.dataset_root is None:
             raise ValueError('Must provide --dataset_root when training on thermal,')
@@ -140,11 +109,6 @@ def main():
                                             Normalizer(), 
                                             Augmenter(), 
                                             Resizer(min_side=int(_h), max_side=int(_w), logger=net_logger)]))
-        dataset_valid = CVIDataset(args.dataset_root, set_name='valid', annotation_name='thermal_annotations.json',
-                                  transform=transforms.Compose(
-                                      [
-                                          Normalizer(), 
-                                          Resizer(min_side=int(_h), max_side=int(_w))]))
     else:
         raise ValueError('Dataset type not understood (must be FLIR, COCO or csv), exiting.')
     
@@ -152,12 +116,6 @@ def main():
                               batch_size=args.batch_size,
                               num_workers=args.workers,
                               shuffle=True,
-                              collate_fn=collater,
-                              pin_memory=True)
-    dataloader_valid = DataLoader(dataset_valid,
-                              batch_size=1,
-                              num_workers=args.workers,
-                              shuffle=False,
                               collate_fn=collater,
                               pin_memory=True)
     
@@ -249,23 +207,15 @@ def main():
                 print(e)
                 continue
 
-
-        # if (epoch_num + 1) % 1 == 0:
-        # if (epoch_num + 1) % 5 == 0:
-            # test(dataset_valid, net_model, epoch_num, args, net_logger)
-
-
         scheduler.step(np.mean(epoch_loss))
         print('Learning Rate:', str(scheduler._last_lr))
-        torch.save(net_model.module, os.path.join(
-                   'saved', '{}_{}_{}.pt'.format(args.dataset, network_name, epoch_num)))
+        #torch.save(net_model.module, os.path.join(
+        #           'saved', '{}_{}_{}.pt'.format(args.dataset, network_name, epoch_num)))
 
     net_logger.info('Training Complete.')
-
-    net_model.eval()
-    test(dataset_valid, net_model, epoch_num, args, net_logger)
-
-    torch.save(net_model, 'model_final.pt')
+    _save_path = os.path.join('saved', '{}_{}_{}_final.pt'.format(args.dataset, network_name, args.epochs))
+    net_logger.info('Save Final *.pt File to {}'.format(_save_path))
+    torch.save(net_model, _save_path)
 
 
 if __name__ == '__main__':
