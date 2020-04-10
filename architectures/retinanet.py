@@ -111,7 +111,7 @@ class RegressionModel(nn.Module):
             print('Convert ONNX Mode at RegressoinModel')
             return out.contiguous().view(1, -1, 4)
         else:  
-            print('RegressionModel::out.shape[0] = {}'.format(str(out.shape[0])))
+            # print('RegressionModel::out.shape[0] = {}'.format(str(out.shape[0])))
             return out.contiguous().view(out.shape[0], -1, 4)
 
 
@@ -168,13 +168,13 @@ class ClassificationModel(nn.Module):
             channels = self.num_classes * self.num_anchors
             # print('[b, w, h, c] = [{}, {}, {}, {}]'.format(batch_size, width, height, channels))
         else:
-            print('ClassificationModel::out1.shape = {}'.format(str(out1.shape)))
+            # print('ClassificationModel::out1.shape = {}'.format(str(out1.shape)))
             batch_size, width, height, channels = out1.shape
         out2 = out1.view(batch_size, width, height, self.num_anchors, self.num_classes)
         if self.convert_onnx:
             return out2.contiguous().view(1, -1, self.num_classes)
         else:
-            print('ClassificationModel::x.shape[0] = {}'.format(str(x.shape[0])))
+            # print('ClassificationModel::x.shape[0] = {}'.format(str(x.shape[0])))
             return out2.contiguous().view(x.shape[0], -1, self.num_classes)
 
 
@@ -559,11 +559,11 @@ class RetinaNetTiny(nn.Module):
 
         if self.convert_onnx:
             assert self.regressionModel.convert_onnx, 'RegressionModel.convert_onnx must be True'
-        _reg = [self.regressionModel(feature) for feature in features]
-        regression = torch.cat(_reg[:2], dim=1)
-        for i in range(2, len(_reg)):
-            regression = torch.cat([regression, _reg[i]], dim=1)
-        #regression = torch.cat([self.regressionModel(feature) for feature in features], dim=1)
+        #_reg = [self.regressionModel(feature) for feature in features]
+        #regression = torch.cat(_reg[:2], dim=1)
+        #for i in range(2, len(_reg)):
+        #    regression = torch.cat([regression, _reg[i]], dim=1)
+        regression = torch.cat([self.regressionModel(feature) for feature in features], dim=1)
 
         if self.convert_onnx:
             assert self.fixed_size, 'RetinaNet.fixed_size must be not None'
@@ -576,10 +576,10 @@ class RetinaNetTiny(nn.Module):
                 print('[{}] Pyramid Size : [{:>4},{:>4}]'.format(i, *_fixed_size))
                 self.classificationModel.fixed_size = _fixed_size
                 _cls.append(self.classificationModel(features[i]))
-            classification = torch.cat(_cls[:2], dim=1)
-            for i in range(2, len(_cls)):
-                classification = torch.cat([classification, _cls[i]], dim=1)
-            #classification = torch.cat(_cls, dim=1)
+            #classification = torch.cat(_cls[:2], dim=1)
+            #for i in range(2, len(_cls)):
+            #    classification = torch.cat([classification, _cls[i]], dim=1)
+            classification = torch.cat(_cls, dim=1)
         else:
             classification = torch.cat([self.classificationModel(feature) for feature in features], dim=1)
 
@@ -588,12 +588,16 @@ class RetinaNetTiny(nn.Module):
         if self.training:
             return self.focalLoss(classification, regression, anchors, annotations)
         else:
+            if self.convert_onnx:
+                print('Ignore post-process')
+                return [classification, regression]
+
             transformed_anchors = self.regressBoxes(anchors, regression)
             transformed_anchors = self.clipBoxes(transformed_anchors, img_batch)
 
-            if self.convert_onnx:
-                print('Ignore post-process')
-                return [classification, transformed_anchors]
+            #if self.convert_onnx:
+            #    print('Ignore post-process')
+            #    return [classification, transformed_anchors]
 
             scores = torch.max(classification, dim=2, keepdim=True)[0]
 

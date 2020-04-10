@@ -265,7 +265,7 @@ def main():
     net_model.eval()
     test(dataset_valid, net_model, epoch_num, args, net_logger)
 
-    torch.save(net_model, 'model_final.pt')
+    torch.save(net_model.module, 'model_final.pt')
 
 
 if __name__ == '__main__':

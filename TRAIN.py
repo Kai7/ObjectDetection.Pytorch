@@ -119,8 +119,7 @@ def main():
                               collate_fn=collater,
                               pin_memory=True)
     
-    print('Number of Class: {:>3}'.format(dataset_train.num_classes()))
-    # pdb.set_trace()
+    net_logger.info('Number of Class: {:>3}'.format(dataset_train.num_classes()))
     
     build_param = {'logger': net_logger}
     if args.resume is not None:
@@ -209,13 +208,13 @@ def main():
 
         scheduler.step(np.mean(epoch_loss))
         print('Learning Rate:', str(scheduler._last_lr))
-        #torch.save(net_model.module, os.path.join(
+        #torch.save(net_model.module.state_dict(), os.path.join(
         #           'saved', '{}_{}_{}.pt'.format(args.dataset, network_name, epoch_num)))
 
     net_logger.info('Training Complete.')
     _save_path = os.path.join('saved', '{}_{}_{}_final.pt'.format(args.dataset, network_name, args.epochs))
     net_logger.info('Save Final *.pt File to {}'.format(_save_path))
-    torch.save(net_model, _save_path)
+    torch.save(net_model.module.state_dict(), _save_path)
 
 
 if __name__ == '__main__':

@@ -33,18 +33,23 @@ print('CUDA available: {}'.format(torch.cuda.is_available()))
 
 CONVERT_FILE_LIMIT = 20*60*60
 
-def main():
-    parser = argparse.ArgumentParser(description='Simple testing script.')
+parser = argparse.ArgumentParser(description='Simple testing script.')
 
-    parser.add_argument('--dataset', help='Dataset type.')
-    parser.add_argument('--resume', type=str,
-                        help='Checkpoint state_dict file to resume training from')
-    parser.add_argument('--demo_path', type=str,
-                        help='Demo images directory path.')
-    parser.add_argument('--threshold', default=0.6, type=float,
-                        help='Object pasitive threshold.')
-    parser.add_argument('--output_path', default='video', type=str,
-                        help='Output path')
+parser.add_argument('--dataset', help='Dataset type.')
+parser.add_argument('--architecture', default='RetinaNet', type=str,
+                    help='Network Architecture.')
+parser.add_argument('--resume', type=str,
+                    help='Checkpoint state_dict file to resume training from')
+parser.add_argument('--num_classes', type=int,
+                    help='The number of class.')
+parser.add_argument('--demo_path', type=str,
+                    help='Demo images directory path.')
+parser.add_argument('--threshold', default=0.6, type=float,
+                    help='Object pasitive threshold.')
+parser.add_argument('--output_path', default='video', type=str,
+                    help='Output path')
+
+def main():
 
     args = parser.parse_args()
 
@@ -64,13 +69,20 @@ def main():
 
     net_logger.info('Positive Threshold: {:.2f}'.format(args.threshold))
 
+    if args.resume is None:
+        raise ValueError('Must provide --resume when testing.')
     
     build_param = {'logger': net_logger}
-    if args.resume is not None:
-        net_logger.info('Loading Checkpoint : {}'.format(args.resume))
-        model = torch.load(args.resume)
+    if args.architecture == 'RetinaNet':
+        model = retinanet.retinanet(args.depth, num_classes=args.num_classes, **build_param)
+    elif args.architecture == 'RetinaNet-Tiny':
+        model = retinanet.retinanet_tiny(num_classes=args.num_classes, **build_param)
     else:
-        raise ValueError('Must provide --resume when testing.')
+        raise ValueError('Architecture <{}> unknown.'.format(args.architecture))
+    
+    net_logger.info('Loading Weights from Checkpoint : {}'.format(args.resume))
+    model.load_state_dict(torch.load(args.resume))
+    #model = torch.load(args.resume)
 
     use_gpu = True
 
@@ -78,10 +90,10 @@ def main():
         if torch.cuda.is_available():
             model = model.cuda()
 
-    # if torch.cuda.is_available():
-    #     model = torch.nn.DataParallel(model).cuda()
-    # else:
-    #     model = torch.nn.DataParallel(model)
+    if torch.cuda.is_available():
+        model = torch.nn.DataParallel(model).cuda()
+    else:
+        model = torch.nn.DataParallel(model)
 
     demo_image_files = os.listdir(args.demo_path)
     demo_image_files.sort()
@@ -151,12 +163,12 @@ def main():
         img_array.append(np.array(img))
 
     
-    print('Convert to video...')
     height, width, layers = img_array[0].shape
     size = (width, height)
     fps = 20
     #fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
     out_video_file = os.path.join(args.output_path, '{}.avi'.format(os.path.basename(args.demo_path)))
+    print('Convert to video... {}'.format(out_video_file))
     out = cv2.VideoWriter(out_video_file, cv2.VideoWriter_fourcc(*'mp4v'), fps, size)
 
     for i in range(len(img_array)):

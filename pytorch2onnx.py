@@ -59,11 +59,12 @@ def main():
     if args.resume is not None:
         net_logger.info('Loading Checkpoint : {}'.format(args.resume))
         model = torch.load(args.resume)
-        model.module.convert_onnx = True
-        model.module.fixed_size = (64, 80)
-        model.module.fpn.convert_onnx = True
-        model.module.regressionModel.convert_onnx = True
-        model.module.classificationModel.convert_onnx = True
+        model = model.module
+        model.convert_onnx = True
+        model.fixed_size = (64, 80)
+        model.fpn.convert_onnx = True
+        model.regressionModel.convert_onnx = True
+        model.classificationModel.convert_onnx = True
     else:
         raise ValueError('Must provide --resume when testing.')
 
@@ -88,7 +89,7 @@ def main():
     # torch.onnx.export(model.module, dummy_input, './{}.onnx'.format(name))
     # torch.onnx.export(model.module, dummy_input, 'out.onnx', verbose=True, 
     #                   input_names=['input'], output_names=['scores', 'labels', 'boxes'])
-    torch.onnx.export(model.module, dummy_input, '{}.onnx'.format(name), verbose=True, 
+    torch.onnx.export(model, dummy_input, '{}.onnx'.format(name), verbose=True, 
                       input_names=['input'], output_names=['classification', 'transformed_anchors'])
 
     print('Write to {}.onnx'.format(name))
