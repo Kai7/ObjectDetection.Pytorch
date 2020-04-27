@@ -17,6 +17,7 @@ else:
     from datasettool.pyflirtools import FLIR
 
 from datasettool.cvidatatools import CVIData
+from datasettool.ksevendata_tool import KSevenData
 
 import skimage.io
 import skimage.transform
@@ -26,6 +27,122 @@ import skimage
 from PIL import Image
 
 import pdb
+
+class KSevenDataset(Dataset):
+    """KSeven dataset."""
+    def __init__(self, root_dir, set_name='train', annotation_name='annotations.json', transform=None):
+        """
+        Args:
+            root_dir (string): KSeven directory.
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        self.root_dir = root_dir
+        self.set_name = set_name
+        self.transform = transform
+
+        self.kseven_data = KSevenData(os.path.join(self.root_dir, self.set_name , annotation_name))
+        print('Annotation File Path: ', os.path.join(self.root_dir, self.set_name , annotation_name))
+        self.image_ids = self.kseven_data.getImgIds()
+
+        self.load_classes()
+
+    def load_classes(self):
+        # load class names (name -> label)
+        categories = self.kseven_data.loadCats(self.kseven_data.getCatIds())
+        categories.sort(key=lambda x: x['id'])
+
+        self.classes = {}
+        self.ksevendata_labels = {}
+        self.ksevendata_labels_inverse = {}
+        for c in categories:
+            self.ksevendata_labels[len(self.classes)] = c['id']
+            self.ksevendata_labels_inverse[c['id']] = len(self.classes)
+            self.classes[c['name']] = len(self.classes)
+
+        # also load the reverse (label -> name)
+        self.labels = {}
+        for key, value in self.classes.items():
+            self.labels[value] = key
+
+    def __len__(self):
+        return len(self.image_ids)
+
+    def __getitem__(self, idx):
+        img = self.load_image(idx)
+        annot = self.load_annotations(idx)
+        # print('image')
+        # print(img)
+        # print('annotation')
+        # print(annot)
+        sample = {'img': img, 'annot': annot}
+        if self.transform:
+            sample = self.transform(sample)
+        return sample
+
+    def load_image(self, image_index):
+        image_info = self.kseven_data.loadImgs(self.image_ids[image_index])[0]
+        path = os.path.join(self.root_dir, self.set_name, image_info['file_name'])
+        # img = cv2.imread(path)
+        # path = os.path.join(self.root_dir, 'images',
+        #                     self.set_name, image_info['file_name'])
+        # print('File Name:', image_info['file_name'])
+        # print('Path:', path)
+        # if len(img.shape) == 2:
+        #     img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = skimage.io.imread(path)
+
+        if len(img.shape) == 2:
+            img = skimage.color.gray2rgb(img)
+
+        return img.astype(np.float32)/255.0
+
+
+    def load_annotations(self, image_index):
+        # get ground truth annotations
+        annotations_ids = self.kseven_data.getAnnIds(
+            imgIds=self.image_ids[image_index], iscrowd=False)
+        annotations = np.zeros((0, 5))
+
+        # some images appear to miss annotations (like image with id 257034)
+        if len(annotations_ids) == 0:
+            return annotations
+
+        # parse annotations
+        ksevendata_annotations = self.kseven_data.loadAnns(annotations_ids)
+        for idx, a in enumerate(ksevendata_annotations):
+            if a['category_id'] > 2:
+                continue
+
+            # some annotations have basically no width / height, skip them
+            if a['bbox'][2] < 1 or a['bbox'][3] < 1:
+                continue
+
+            annotation = np.zeros((1, 5))
+            annotation[0, :4] = a['bbox']
+            annotation[0, 4] = self.ksevendata_label_to_label(a['category_id'])
+            annotations = np.append(annotations, annotation, axis=0)
+
+        # transform from [x, y, w, h] to [x1, y1, x2, y2]
+        annotations[:, 2] = annotations[:, 0] + annotations[:, 2]
+        annotations[:, 3] = annotations[:, 1] + annotations[:, 3]
+
+        return annotations
+
+    def ksevendata_label_to_label(self, ksevendata_label):
+        return self.ksevendata_labels_inverse[ksevendata_label]
+
+    def label_to_ksevendata_label(self, label):
+        return self.ksevendata_labels[label]
+
+    def image_aspect_ratio(self, image_index):
+        image = self.kseven_data.loadImgs(self.image_ids[image_index])[0]
+        return float(image['width']) / float(image['height'])
+
+    def num_classes(self):
+        return len(self.kseven_data.dataset['categories'])
+
 
 class CVIDataset(Dataset):
     """CVI dataset."""
@@ -243,7 +360,8 @@ class CocoDataset(Dataset):
         return float(image['width']) / float(image['height'])
 
     def num_classes(self):
-        return 80
+        #return 80
+        return len(self.coco_labels)
 
 class FLIRDataset(Dataset):
     """FLIR dataset."""
@@ -579,83 +697,175 @@ def collater(data):
 
     return {'img': padded_imgs, 'annot': annot_padded, 'scale': scales}
 
-class Resizer(object):
-    """Convert ndarrays in sample to Tensors."""
-    def __init__(self, min_side=608, max_side=1024, demo=False, **kwargs):
-        self.min_side  = min_side
-        self.max_side  = max_side
-        #self.base_size = 32
-        self.base_size = 16
-        self.demo = demo
+class K7ImagePreprocessor(object):
+    def __init__(self, mean=None, std=None, resize_height=608, resize_width=1024, base_size=32, **kwargs):
+        self.mean = mean if mean is not None else np.array([[[0.0, 0.0, 0.0]]])
+        self.std  =  std if  std is not None else np.array([[[1.0, 1.0, 1.0]]])
+        self.resize_height, self.resize_width = resize_height, resize_width
+        self.base_size = base_size
 
         if 'logger' in kwargs:
-            kwargs['logger'].info('Resizer.Min_Side   : {}'.format(self.min_side))
-            kwargs['logger'].info('Resizer.Max_Side   : {}'.format(self.max_side))
+            kwargs['logger'].info('Mean : {}'.format(str(self.mean)))
+            kwargs['logger'].info('Std  : {}'.format(str(self.std)))
+            kwargs['logger'].info('Resize Height  : {}'.format(self.resize_height))
+            kwargs['logger'].info('Resize Width   : {}'.format(self.resize_width))
+            kwargs['logger'].info('Base Size      : {}'.format(self.base_size))
 
     def __call__(self, sample):
-        if not self.demo:
+        image = sample
+        image = (image.astype(np.float32) - self.mean) / self.std
+
+        rows, cols, cns = image.shape
+        h_scale = self.resize_height / rows
+        w_scale = self.resize_width  / cols 
+        scale = min(h_scale, w_scale)
+        image = skimage.transform.resize(image, (int(round(rows*scale)), int(round((cols*scale)))))
+        rows, cols, cns = image.shape
+
+        #pad_w = (self.base_size - rows%self.base_size)%self.base_size
+        #pad_h = (self.base_size - cols%self.base_size)%self.base_size
+        #new_image = np.zeros((rows + pad_w, cols + pad_h, cns)).astype(np.float32)
+
+        pad_h = (self.base_size - self.resize_height%self.base_size)%self.base_size
+        pad_w = (self.base_size - self.resize_width%self.base_size)%self.base_size
+        new_image = np.zeros((self.resize_height + pad_h, self.resize_width + pad_w, cns)).astype(np.float32)
+        print(f'new_image.shape = {str(new_image.shape)}')
+
+        new_image[:rows, :cols, :] = image.astype(np.float32)
+
+        return new_image
+
+
+class Resizer(object):
+    """Convert ndarrays in sample to Tensors."""
+    def __init__(self, height=608, width=1024, 
+                    min_side=608, max_side=1024, base_size=32, 
+                    inference_mode=False, resize_mode=0, **kwargs):
+        self.height, self.width = height, width
+        self.min_side, self.max_side = min_side, max_side
+        self.base_size = base_size
+        self.inference_mode = inference_mode
+        self.resize_mode = resize_mode
+
+        if 'logger' in kwargs:
+            if self.resize_mode == 0:
+                kwargs['logger'].info('Resizer.Min_side : {}'.format(self.min_side))
+                kwargs['logger'].info('Resizer.Max_side : {}'.format(self.max_side))
+            elif self.resize_mode == 1:
+                kwargs['logger'].info('Resizer.Height  : {}'.format(self.height))
+                kwargs['logger'].info('Resizer.Width   : {}'.format(self.width))
+
+    def __call__(self, sample):
+        if not self.inference_mode:
             image, annots = sample['img'], sample['annot']
         else: 
             image = sample
         rows, cols, cns = image.shape
-        smallest_side = min(rows, cols)
 
-        # rescale the image so the smallest side is min_side
-        scale = self.min_side / smallest_side
+        if self.resize_mode == 0:
+            smallest_side = min(rows, cols)
 
-        # check if the largest side is now greater than max_side, which can happen
-        # when images have a large aspect ratio
-        largest_side = max(rows, cols)
+            # rescale the image so the smallest side is min_side
+            scale = self.min_side / smallest_side
 
-        if largest_side * scale > self.max_side:
-            scale = self.max_side / largest_side
+            # check if the largest side is now greater than max_side, which can happen
+            # when images have a large aspect ratio
+            largest_side = max(rows, cols)
 
-        # resize the image with the computed scale
-        image = skimage.transform.resize(image, (int(round(rows*scale)), int(round((cols*scale)))))
-        rows, cols, cns = image.shape
+            if largest_side * scale > self.max_side:
+                scale = self.max_side / largest_side
 
-        #pad_w = self.base_size - rows%self.base_size
-        #pad_h = self.base_size - cols%self.base_size
+            # resize the image with the computed scale
+            image = skimage.transform.resize(image, (int(round(rows*scale)), int(round((cols*scale)))))
+            rows, cols, cns = image.shape
 
-        pad_w = (self.base_size - rows%self.base_size)%self.base_size
-        pad_h = (self.base_size - cols%self.base_size)%self.base_size
+            pad_w = (self.base_size - rows%self.base_size)%self.base_size
+            pad_h = (self.base_size - cols%self.base_size)%self.base_size
 
-        new_image = np.zeros((rows + pad_w, cols + pad_h, cns)).astype(np.float32)
-        new_image[:rows, :cols, :] = image.astype(np.float32)
-        # print(new_image.shape)
+            new_image = np.zeros((rows + pad_w, cols + pad_h, cns)).astype(np.float32)
+            new_image[:rows, :cols, :] = image.astype(np.float32)
+            # print(new_image.shape)
+        elif self.resize_mode == 1:
+            h_scale = self.height / rows
+            w_scale = self.width  / cols 
+            scale = min(h_scale, w_scale)
+            # print(f'resize scale = {scale}')
 
-        if not self.demo:
+            # resize the image with the computed scale
+            image = skimage.transform.resize(image, (int(round(rows*scale)), int(round((cols*scale)))))
+            rows, cols, cns = image.shape
+
+            #pad_w = (self.base_size - rows%self.base_size)%self.base_size
+            #pad_h = (self.base_size - cols%self.base_size)%self.base_size
+
+            pad_h = (self.base_size - self.height%self.base_size)%self.base_size
+            pad_w = (self.base_size - self.width%self.base_size)%self.base_size
+
+            new_image = np.zeros((self.height + pad_h, self.width + pad_w, cns)).astype(np.float32)
+            # print(new_image.shape)
+            new_image[:rows, :cols, :] = image.astype(np.float32)
+        else:
+            print('Error resize mode.')
+            return None
+
+        if not self.inference_mode:
             annots[:, :4] *= scale
             return {'img': torch.from_numpy(new_image), 'annot': torch.from_numpy(annots), 'scale': scale}
         else:
             return torch.from_numpy(new_image)
 
+
 # class Resizer(object):
 #     """Convert ndarrays in sample to Tensors."""
-#     def __init__(self, size):
-#         self.size = size
+#     def __init__(self, min_side=608, max_side=1024, base_size=32, inference_mode=False, **kwargs):
+#         self.min_side  = min_side
+#         self.max_side  = max_side
+#         self.base_size = base_size
+#         self.inference_mode = inference_mode
 
-#     # def __call__(self, sample, common_size=512):
+#         if 'logger' in kwargs:
+#             kwargs['logger'].info('Resizer.Min_Side   : {}'.format(self.min_side))
+#             kwargs['logger'].info('Resizer.Max_Side   : {}'.format(self.max_side))
+
 #     def __call__(self, sample):
-#         common_size = self.size
-#         image, annots = sample['img'], sample['annot']
-#         height, width, _ = image.shape
-#         if height > width:
-#             scale = common_size / height
-#             resized_height = common_size
-#             resized_width = int(width * scale)
+#         if not self.inference_mode:
+#             image, annots = sample['img'], sample['annot']
+#         else: 
+#             image = sample
+#         rows, cols, cns = image.shape
+#         smallest_side = min(rows, cols)
+
+#         # rescale the image so the smallest side is min_side
+#         scale = self.min_side / smallest_side
+#         print(f'scale = {scale}')
+
+#         # check if the largest side is now greater than max_side, which can happen
+#         # when images have a large aspect ratio
+#         largest_side = max(rows, cols)
+
+#         if largest_side * scale > self.max_side:
+#             scale = self.max_side / largest_side
+
+#         # resize the image with the computed scale
+#         image = skimage.transform.resize(image, (int(round(rows*scale)), int(round((cols*scale)))))
+#         rows, cols, cns = image.shape
+
+#         #pad_w = self.base_size - rows%self.base_size
+#         #pad_h = self.base_size - cols%self.base_size
+
+#         pad_w = (self.base_size - rows%self.base_size)%self.base_size
+#         pad_h = (self.base_size - cols%self.base_size)%self.base_size
+
+#         new_image = np.zeros((rows + pad_w, cols + pad_h, cns)).astype(np.float32)
+#         new_image[:rows, :cols, :] = image.astype(np.float32)
+#         # print(new_image.shape)
+
+#         if not self.inference_mode:
+#             annots[:, :4] *= scale
+#             return {'img': torch.from_numpy(new_image), 'annot': torch.from_numpy(annots), 'scale': scale}
 #         else:
-#             scale = common_size / width
-#             resized_height = int(height * scale)
-#             resized_width = common_size
+#             return torch.from_numpy(new_image)
 
-#         image = cv2.resize(image, (resized_width, resized_height))
-
-#         new_image = np.zeros((common_size, common_size, 3))
-#         new_image[0:resized_height, 0:resized_width] = image
-#         annots[:, :4] *= scale
-
-#         return {'img': torch.from_numpy(new_image), 'annot': torch.from_numpy(annots), 'scale': scale}
 
 
 class Augmenter(object):
@@ -684,13 +894,13 @@ class Augmenter(object):
 
 class Normalizer(object):
 
-    def __init__(self, demo=False):
+    def __init__(self, inference_mode=False):
         self.mean = np.array([[[0.485, 0.456, 0.406]]])
         self.std  = np.array([[[0.229, 0.224, 0.225]]])
-        self.demo = demo
+        self.inference_mode = inference_mode
 
     def __call__(self, sample):
-        if not self.demo:
+        if not self.inference_mode:
             image, annots = sample['img'], sample['annot']
             return {'img':((image.astype(np.float32)-self.mean)/self.std), 'annot': annots}
         else:

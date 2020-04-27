@@ -31,7 +31,10 @@ class Anchors(nn.Module):
         
         image_shape = image.shape[2:]
         image_shape = np.array(image_shape)
-        image_shapes = [(image_shape + 2 ** x - 1) // (2 ** x) for x in self.pyramid_levels]
+        #image_shapes = [(image_shape + 2 ** x - 1) // (2 ** x) for x in self.pyramid_levels]
+        image_shapes = [(image_shape + x - 1) // x for x in self.strides]
+        # print('anchor forward')
+        # print(image_shapes)
 
         # compute anchors over all pyramid levels
         all_anchors = np.zeros((0, 4)).astype(np.float32)
@@ -85,6 +88,28 @@ def generate_anchors(base_size=16, ratios=None, scales=None, get_sample=False):
 
     return anchors
 
+def shift(shape, stride, anchors):
+    shift_x = (np.arange(0, shape[1]) + 0.5) * stride
+    shift_y = (np.arange(0, shape[0]) + 0.5) * stride
+
+    shift_x, shift_y = np.meshgrid(shift_x, shift_y)
+
+    shifts = np.vstack((
+        shift_x.ravel(), shift_y.ravel(),
+        shift_x.ravel(), shift_y.ravel()
+    )).transpose()
+
+    # add A anchors (1, A, 4) to
+    # cell K shifts (K, 1, 4) to get
+    # shift anchors (K, A, 4)
+    # reshape to (K*A, 4) shifted anchors
+    A = anchors.shape[0]
+    K = shifts.shape[0]
+    all_anchors = (anchors.reshape((1, A, 4)) + shifts.reshape((1, K, 4)).transpose((1, 0, 2)))
+    all_anchors = all_anchors.reshape((K * A, 4))
+
+    return all_anchors
+
 def compute_shape(image_shape, pyramid_levels):
     """Compute shapes based on pyramid levels.
 
@@ -119,25 +144,4 @@ def anchors_for_shape(
     return all_anchors
 
 
-def shift(shape, stride, anchors):
-    shift_x = (np.arange(0, shape[1]) + 0.5) * stride
-    shift_y = (np.arange(0, shape[0]) + 0.5) * stride
-
-    shift_x, shift_y = np.meshgrid(shift_x, shift_y)
-
-    shifts = np.vstack((
-        shift_x.ravel(), shift_y.ravel(),
-        shift_x.ravel(), shift_y.ravel()
-    )).transpose()
-
-    # add A anchors (1, A, 4) to
-    # cell K shifts (K, 1, 4) to get
-    # shift anchors (K, A, 4)
-    # reshape to (K*A, 4) shifted anchors
-    A = anchors.shape[0]
-    K = shifts.shape[0]
-    all_anchors = (anchors.reshape((1, A, 4)) + shifts.reshape((1, K, 4)).transpose((1, 0, 2)))
-    all_anchors = all_anchors.reshape((K * A, 4))
-
-    return all_anchors
 

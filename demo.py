@@ -32,6 +32,7 @@ import pdb
 print('CUDA available: {}'.format(torch.cuda.is_available()))
 
 CONVERT_FILE_LIMIT = 20*60*60
+COLOR_LABEL = ['yellow', 'green']
 
 parser = argparse.ArgumentParser(description='Simple testing script.')
 
@@ -54,10 +55,13 @@ def main():
     args = parser.parse_args()
 
     if args.dataset == 'thermal':
-        transform=transforms.Compose([Normalizer(demo=True), 
-                                      Resizer(min_side=int(60), max_side=int(80), demo=True)])
+        transform=transforms.Compose([Normalizer(inference_mode=True), 
+                                      Resizer(min_side=int(60), max_side=int(80), inference_mode=True)])
+    elif args.dataset == '3s-pocket-thermal-face':
+        transform=transforms.Compose([Normalizer(inference_mode=True), 
+                                      Resizer(height=int(288), width=int(384), resize_mode=1, inference_mode=True)])
     else:
-        raise ValueError('unknow demo size.')
+        raise ValueError('unknow dataset.')
 
     # print('network_name:', network_name)
     net_logger    = logging.getLogger('Demo Logger')
@@ -77,6 +81,8 @@ def main():
         model = retinanet.retinanet(args.depth, num_classes=args.num_classes, **build_param)
     elif args.architecture == 'RetinaNet-Tiny':
         model = retinanet.retinanet_tiny(num_classes=args.num_classes, **build_param)
+    elif args.architecture == 'RetinaNet_P45P6':
+        model = retinanet.retinanet_p45p6(num_classes=args.num_classes, **build_param)
     else:
         raise ValueError('Architecture <{}> unknown.'.format(args.architecture))
     
@@ -91,9 +97,9 @@ def main():
             model = model.cuda()
 
     if torch.cuda.is_available():
-        model = torch.nn.DataParallel(model).cuda()
+       model = torch.nn.DataParallel(model).cuda()
     else:
-        model = torch.nn.DataParallel(model)
+       model = torch.nn.DataParallel(model)
 
     demo_image_files = os.listdir(args.demo_path)
     demo_image_files.sort()
@@ -140,7 +146,9 @@ def main():
         boxes[:, 2] -= boxes[:, 0]
         boxes[:, 3] -= boxes[:, 1]
 
-        img = img.resize((80, 60))
+        if args.dataset == 'thermal':
+            img = img.resize((80, 60))
+
         draw = ImageDraw.Draw(img)
         for box_id in range(boxes.shape[0]):
             score = float(scores[box_id])
@@ -152,7 +160,8 @@ def main():
                 break
 
             x, y, w, h = box
-            draw.rectangle(tuple([x, y, x+w, y+h]), width = 1, outline ='green')
+            #draw.rectangle(tuple([x, y, x+w, y+h]), width = 1, outline ='green')
+            draw.rectangle(tuple([x, y, x+w, y+h]), width = 1, outline =COLOR_LABEL[label])
             
             # append detection to results
             # results.append(image_result)
@@ -165,8 +174,9 @@ def main():
     
     height, width, layers = img_array[0].shape
     size = (width, height)
-    fps = 20
+    fps = 25
     #fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
+
     out_video_file = os.path.join(args.output_path, '{}.avi'.format(os.path.basename(args.demo_path)))
     print('Convert to video... {}'.format(out_video_file))
     out = cv2.VideoWriter(out_video_file, cv2.VideoWriter_fourcc(*'mp4v'), fps, size)

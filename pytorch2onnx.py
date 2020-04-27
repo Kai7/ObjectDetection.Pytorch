@@ -28,8 +28,10 @@ parser.add_argument('--resume', type=str,
                     help='Checkpoint state_dict file to resume training from')
 parser.add_argument('--name', type=str,
                     help='Model name')
-parser.add_argument('--in_size', type=str,
-                    help='Input size')
+parser.add_argument('--num_classes', type=int,
+                    help='The number of class.')
+parser.add_argument('--in_size', type=str, default='480,720',
+                    help='Input size [height, width]')
 
 def main():
     args = parser.parse_args()
@@ -40,12 +42,14 @@ def main():
         network_name = 'RetinaNet-Res{}'.format(args.depth)
     elif args.architecture == 'RetinaNet-Tiny':
         network_name = 'RetinaNet-Tiny'
+    elif args.architecture == 'RetinaNet_P45P6':
+        network_name = 'RetinaNet_P45P6'
     else:
         raise ValueError('Architecture {} is not support.'.format(args.architecture)) 
 
     name = network_name.lower()
 
-    net_logger    = logging.getLogger('Demo Logger')
+    net_logger    = logging.getLogger('pytorch2onnx Logger')
     formatter     = logging.Formatter(LOGGING_FORMAT)
     streamhandler = logging.StreamHandler()
     streamhandler.setFormatter(formatter)
@@ -54,14 +58,30 @@ def main():
 
     net_logger.info('network_name: {}'.format(network_name))
     net_logger.info('name: {}'.format(name))
+    net_logger.info('num classes: {}'.format(args.num_classes))
+
+    in_h, in_w = args.in_size.split(',')
+    in_h, in_w = int(in_h), int(in_w)
+    net_logger.info(f'Input Tensor Size: [ {in_h}, {in_w}]')
+    # exit(0)
 
     build_param = {'logger': net_logger}
+    if args.architecture == 'RetinaNet':
+        model = retinanet.retinanet(args.depth, num_classes=args.num_classes, **build_param)
+    elif args.architecture == 'RetinaNet-Tiny':
+        model = retinanet.retinanet_tiny(num_classes=args.num_classes, **build_param)
+    elif args.architecture == 'RetinaNet_P45P6':
+        model = retinanet.retinanet_p45p6(num_classes=args.num_classes, **build_param)
+    else:
+        raise ValueError('Architecture <{}> unknown.'.format(args.architecture))
+
     if args.resume is not None:
         net_logger.info('Loading Checkpoint : {}'.format(args.resume))
-        model = torch.load(args.resume)
-        model = model.module
+        model.load_state_dict(torch.load(args.resume))
+        # model = torch.load(args.resume)
+        # model = model.module
         model.convert_onnx = True
-        model.fixed_size = (64, 80)
+        model.fixed_size = (in_h, in_w)
         model.fpn.convert_onnx = True
         model.regressionModel.convert_onnx = True
         model.classificationModel.convert_onnx = True
@@ -81,7 +101,7 @@ def main():
     model.eval()
 
     h, w = 64, 80
-    dummy_input = torch.randn(1, 3, h, w, device='cuda')
+    dummy_input = torch.randn(1, 3, in_h, in_w, device='cuda')
     # in_tensor = torch.ones([1, 3, h, w])
 
     # torch.onnx.export(model, dummy_input, "{}.onnx".format(name), verbose=True, input_names=input_names, output_names=output_names)
@@ -90,7 +110,8 @@ def main():
     # torch.onnx.export(model.module, dummy_input, 'out.onnx', verbose=True, 
     #                   input_names=['input'], output_names=['scores', 'labels', 'boxes'])
     torch.onnx.export(model, dummy_input, '{}.onnx'.format(name), verbose=True, 
-                      input_names=['input'], output_names=['classification', 'transformed_anchors'])
+                      input_names=['input'], output_names=['classification', 'regression'], 
+                      keep_initializers_as_inputs=True)
 
     print('Write to {}.onnx'.format(name))
     print('Done')

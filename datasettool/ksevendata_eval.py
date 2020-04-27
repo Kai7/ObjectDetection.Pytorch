@@ -4,8 +4,9 @@ import torch
 
 import pdb
 
-def coco_evaluate_cvidata(dataset, model, threshold=0.05, valid_class_id=None):
+def coco_evaluate_ksevendata(dataset, model, threshold=0.05, valid_class_id=None):
     model.eval()
+    # print(dataset.label_to_ksevendata_label)
     with torch.no_grad():
         # start collecting results
         results = []
@@ -15,17 +16,19 @@ def coco_evaluate_cvidata(dataset, model, threshold=0.05, valid_class_id=None):
             scale = data['scale']
 
             # run network
-            #aa = data['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0)
-            #print(aa.shape)
-            #pdb.set_trace()
+            # aa = data['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0)
+            # print(aa.shape)
+            # pdb.set_trace()
             scores, labels, boxes = model(data['img'].permute(
-                2, 0, 1).cuda().float().unsqueeze(dim=0))
+                2, 0, 1).cuda().float().unsqueeze(dim=0), return_loss=False)
             scores = scores.cpu()
             labels = labels.cpu()
             boxes = boxes.cpu()
 
             # correct boxes for image scale
             boxes /= scale
+
+            # pdb.set_trace()
 
             if boxes.shape[0] > 0:
                 # change to (x, y, w, h) (MS COCO standard)
@@ -49,13 +52,14 @@ def coco_evaluate_cvidata(dataset, model, threshold=0.05, valid_class_id=None):
                     # append detection for each positively labeled class
                     image_result = {
                         'image_id': dataset.image_ids[index],
-                        'category_id': dataset.label_to_cvidata_label(label),
+                        'category_id': dataset.label_to_ksevendata_label(label),
                         'score': float(score),
                         'bbox': box.tolist(),
                     }
 
                     # append detection to results
                     results.append(image_result)
+
 
             # append image to list of processed images
             image_ids.append(dataset.image_ids[index])
@@ -70,13 +74,13 @@ def coco_evaluate_cvidata(dataset, model, threshold=0.05, valid_class_id=None):
         json.dump(results, open('{}_bbox_results.json'.format(
             'tmp'), 'w'), indent=4)
 
-        # load results in CVIData evaluation tool
-        cvidata_true = dataset.cvi_data
-        cvidata_pred = cvidata_true.loadRes(
+        # load results in KSevenData evaluation tool
+        ksevendata_true = dataset.kseven_data
+        ksevendata_pred = ksevendata_true.loadRes(
             '{}_bbox_results.json'.format('tmp'))
 
         # run COCO evaluation
-        coco_eval = COCOeval(cvidata_true, cvidata_pred, 'bbox')
+        coco_eval = COCOeval(ksevendata_true, ksevendata_pred, 'bbox')
         coco_eval.params.imgIds = image_ids
         coco_eval.evaluate()
         coco_eval.accumulate()
@@ -98,4 +102,5 @@ def coco_evaluate_cvidata(dataset, model, threshold=0.05, valid_class_id=None):
         Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = {:0.3f}\n'''
         # print('tttt\n')
         # print(stats_info.format(*coco_eval.stats))
+        # pdb.set_trace()
         return stats_info.format(*coco_eval.stats)
