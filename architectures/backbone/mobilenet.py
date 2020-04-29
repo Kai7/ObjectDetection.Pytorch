@@ -171,15 +171,15 @@ class MobileNetV2(nn.Module):
 
     def forward(self, x):
         # return self._forward_impl(x)
-        print(f'Input Shape : {str(x.shape)}')
+        # print(f'Input Shape : {str(x.shape)}')
         x = self.stem(x)
-        print(f'x_stem Shape : {str(x.shape)}')
+        # print(f'x_stem Shape : {str(x.shape)}')
         RETURN_IDXES = [2, 4, 6]
 
         f_maps = list()
         for i, _blocks in enumerate(self.fpn_blocks):
             x = _blocks(x)
-            print(f'Block_{i} Shape : {str(x.shape)}')
+            # print(f'Block_{i} Shape : {str(x.shape)}')
             if i in RETURN_IDXES:
                 f_maps.append(x)
 

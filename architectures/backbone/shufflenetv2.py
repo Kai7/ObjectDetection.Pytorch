@@ -136,8 +136,7 @@ class ShuffleNetV2(nn.Module):
         return x
 
     def forward(self, x):
-        #return self._forward_impl(x)
-        print(f'Input Shape : {str(x.shape)}')
+        # print(f'Input Shape : {str(x.shape)}')
 
         x = self.conv1(x)
         x = self.maxpool(x)
@@ -145,9 +144,9 @@ class ShuffleNetV2(nn.Module):
         x_stage_3 = self.stage3(x_stage_2)
         x_stage_4 = self.stage4(x_stage_3)
      
-        print(f'X Stage 2 Shape : {str(x_stage_2.shape)}')
-        print(f'X Stage 3 Shape : {str(x_stage_3.shape)}')
-        print(f'X Stage 4 Shape : {str(x_stage_4.shape)}')
+        # print(f'X Stage 2 Shape : {str(x_stage_2.shape)}')
+        # print(f'X Stage 3 Shape : {str(x_stage_3.shape)}')
+        # print(f'X Stage 4 Shape : {str(x_stage_4.shape)}')
 
         return [x_stage_2, x_stage_3, x_stage_4]
 

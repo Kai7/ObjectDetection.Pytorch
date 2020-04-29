@@ -190,6 +190,8 @@ class KSevenDet(nn.Module):
         self.head_pyramid_levels    = cfg['head_pyramid_levels']
         self.iou_threshold = iou_threshold
 
+        self.convert_onnx = False
+
         if cfg['backbone'] == 'resnet':
             assert 0, 'not support now'
         elif cfg['backbone'] == 'efficientnet':
@@ -210,8 +212,8 @@ class KSevenDet(nn.Module):
         
         # my_pyramid_levels = [3, 4, 5, 6, 7]
         # self.head = _get_head(cfg)
-        if cfg['head'] == 'fpn':
-            self.head = PyramidFeatures(*_feature_maps_channels, 
+        if cfg['neck'] == 'fpn':
+            self.neck = PyramidFeatures(*_feature_maps_channels, 
                                         in_pyramid_levels=self.feature_pyramid_levels, 
                                         out_pyramid_levels=self.head_pyramid_levels)
         else:
@@ -226,11 +228,11 @@ class KSevenDet(nn.Module):
         my_sizes   = [int(2 ** (x + 2)) for x in my_pyramid_levels]
         my_ratios  = [1, 1.5, 2]
         #my_ratios  = [0.45, 1, 3]
-        self.anchors = Anchors(pyramid_levels=my_pyramid_levels,
-                               sizes=my_sizes,
-                               ratios=my_ratios,
-                               **kwargs)
-        # self.anchors = Anchors()
+        # self.anchors = Anchors(pyramid_levels=my_pyramid_levels,
+        #                        sizes=my_sizes,
+        #                        ratios=my_ratios,
+        #                        **kwargs)
+        self.anchors = Anchors()
 
         self.regressBoxes = BBoxTransform()
 
@@ -290,14 +292,14 @@ class KSevenDet(nn.Module):
 
         features = self.backbone(img_batch)
 
-        head_features = self.head(features)
+        neck_features = self.neck(features)
 
-        regression = torch.cat([self.regressionModel(_feature) for _feature in head_features], dim=1)
+        regression = torch.cat([self.regressionModel(_feature) for _feature in neck_features], dim=1)
 
-        classification = torch.cat([self.classificationModel(_feature) for _feature in head_features], dim=1)
+        classification = torch.cat([self.classificationModel(_feature) for _feature in neck_features], dim=1)
 
-        print(f'Regression Shape     : {str(regression.shape)}')
-        print(f'Classification Shape : {str(classification.shape)}')
+        # print(f'Regression Shape     : {str(regression.shape)}')
+        # print(f'Classification Shape : {str(classification.shape)}')
 
         if return_head:
             return [classification, regression]

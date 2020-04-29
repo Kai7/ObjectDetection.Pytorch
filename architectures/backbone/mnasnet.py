@@ -161,7 +161,7 @@ class MNASNet(torch.nn.Module):
         self.feature_maps_channels = [24, 48, 160]
 
     def forward(self, x):
-        print(f'Input Shape : {str(x.shape)}')
+        # print(f'Input Shape : {str(x.shape)}')
         x_0 = self.layers(x)
         # Equivalent to global avgpool and removing H and W dimensions.
         #x = x.mean([2, 3])
@@ -172,13 +172,13 @@ class MNASNet(torch.nn.Module):
         x_5 = self.mnasnet_block_5(x_4)
         x_6 = self.mnasnet_block_6(x_5)
 
-        print(f'x_0 Shapex = {str(x_0.shape)}')
-        print(f'x_1 Shapex = {str(x_1.shape)}')
-        print(f'x_2 Shapex = {str(x_2.shape)}')
-        print(f'x_3 Shapex = {str(x_3.shape)}')
-        print(f'x_4 Shapex = {str(x_4.shape)}')
-        print(f'x_5 Shapex = {str(x_5.shape)}')
-        print(f'x_6 Shapex = {str(x_6.shape)}')
+        # print(f'x_0 Shapex = {str(x_0.shape)}')
+        # print(f'x_1 Shapex = {str(x_1.shape)}')
+        # print(f'x_2 Shapex = {str(x_2.shape)}')
+        # print(f'x_3 Shapex = {str(x_3.shape)}')
+        # print(f'x_4 Shapex = {str(x_4.shape)}')
+        # print(f'x_5 Shapex = {str(x_5.shape)}')
+        # print(f'x_6 Shapex = {str(x_6.shape)}')
 
         return [x_2, x_4, x_6]
 

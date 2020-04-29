@@ -192,6 +192,7 @@ class RetinaNet(nn.Module):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
 
         self.iou_threshold = iou_threshold
+        self.convert_onnx = False
 
         if block == BasicBlock:
             fpn_sizes = [self.layer2[layers[1] - 1].conv2.out_channels, self.layer3[layers[2] - 1].conv2.out_channels,
@@ -212,11 +213,11 @@ class RetinaNet(nn.Module):
         my_sizes   = [int(2 ** (x + 2)) for x in my_pyramid_levels]
         my_ratios  = [1, 1.5, 2]
         #my_ratios  = [0.45, 1, 3]
-        self.anchors = Anchors(pyramid_levels=my_pyramid_levels,
-                               sizes=my_sizes,
-                               ratios=my_ratios,
-                               **kwargs)
-        # self.anchors = Anchors()
+        # self.anchors = Anchors(pyramid_levels=my_pyramid_levels,
+        #                        sizes=my_sizes,
+        #                        ratios=my_ratios,
+        #                        **kwargs)
+        self.anchors = Anchors()
 
         self.regressBoxes = BBoxTransform()
 
@@ -268,13 +269,7 @@ class RetinaNet(nn.Module):
             if isinstance(layer, nn.BatchNorm2d):
                 layer.eval()
 
-    def forward(self, inputs):
-
-        if self.training:
-            img_batch, annotations = inputs
-        else:
-            img_batch = inputs
-
+    def forward(self, img_batch, annotations=None, return_head=False, return_loss=True):
         x = self.conv1(img_batch)
         x = self.bn1(x)
         x = self.relu(x)
@@ -291,9 +286,12 @@ class RetinaNet(nn.Module):
 
         classification = torch.cat([self.classificationModel(feature) for feature in features], dim=1)
 
+        if return_head:
+            return [classification, regression]
+
         anchors = self.anchors(img_batch)
 
-        if self.training:
+        if return_loss:
             return self.focalLoss(classification, regression, anchors, annotations)
         else:
             transformed_anchors = self.regressBoxes(anchors, regression)
@@ -318,6 +316,57 @@ class RetinaNet(nn.Module):
             nms_scores, nms_class = classification[0, anchors_nms_idx, :].max(dim=1)
 
             return [nms_scores, nms_class, transformed_anchors[0, anchors_nms_idx, :]]
+
+    # def forward(self, inputs):
+
+        # if self.training:
+        #     img_batch, annotations = inputs
+        # else:
+        #     img_batch = inputs
+
+        # x = self.conv1(img_batch)
+        # x = self.bn1(x)
+        # x = self.relu(x)
+        # x = self.maxpool(x)
+
+        # x1 = self.layer1(x)
+        # x2 = self.layer2(x1)
+        # x3 = self.layer3(x2)
+        # x4 = self.layer4(x3)
+
+        # features = self.fpn([x2, x3, x4])
+
+        # regression = torch.cat([self.regressionModel(feature) for feature in features], dim=1)
+
+        # classification = torch.cat([self.classificationModel(feature) for feature in features], dim=1)
+
+        # anchors = self.anchors(img_batch)
+
+        # if self.training:
+        #     return self.focalLoss(classification, regression, anchors, annotations)
+        # else:
+        #     transformed_anchors = self.regressBoxes(anchors, regression)
+        #     transformed_anchors = self.clipBoxes(transformed_anchors, img_batch)
+
+        #     scores = torch.max(classification, dim=2, keepdim=True)[0]
+
+        #     scores_over_thresh = (scores > 0.05)[0, :, 0]
+
+        #     if scores_over_thresh.sum() == 0:
+        #         print('No boxes to NMS')
+        #         # no boxes to NMS, just return
+        #         # return [torch.zeros(0), torch.zeros(0), torch.zeros(0, 4)]
+        #         return [torch.zeros([1]).cuda(0), torch.zeros([1]).cuda(0), torch.zeros([1, 4]).cuda(0)]
+
+        #     classification = classification[:, scores_over_thresh, :]
+        #     transformed_anchors = transformed_anchors[:, scores_over_thresh, :]
+        #     scores = scores[:, scores_over_thresh, :]
+
+        #     anchors_nms_idx = nms(transformed_anchors[0,:,:], scores[0,:,0], 0.5)
+
+        #     nms_scores, nms_class = classification[0, anchors_nms_idx, :].max(dim=1)
+
+        #     return [nms_scores, nms_class, transformed_anchors[0, anchors_nms_idx, :]]
 
 def retinanet(depth, num_classes=80, pretrained=False, **kwargs):
     assert depth in [18, 34, 50, 101, 152]
@@ -870,9 +919,21 @@ class RetinaNetP45P6(nn.Module):
 
 
 def retinanet_p45p6(num_classes, pretrained=False, **kwargs):
-    """Constructs a ResNet-152 model.
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-    """
     model = RetinaNetP45P6(num_classes, BasicBlock, [2, 2, 2, 2], **kwargs)
     return model
+
+def build_retinanet(architecture, num_classes=80, pretrained=False, **kwargs):
+    depth = int(architecture.split('-')[1][3:])
+    assert depth in [18, 34, 50, 101, 152]
+    if depth == 18:
+        return retinanet18(num_classes, pretrained=pretrained, **kwargs)
+    elif depth == 34:
+        return retinanet34(num_classes, pretrained=pretrained, **kwargs)
+    elif depth == 50:
+        return retinanet50(num_classes, pretrained=pretrained, **kwargs)
+    elif depth == 101:
+        return retinanet101(num_classes, pretrained=pretrained, **kwargs)
+    elif depth == 152:
+        return retinanet152(num_classes, pretrained=pretrained, **kwargs)
+    else:
+        return None

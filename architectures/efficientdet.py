@@ -3,21 +3,18 @@ import torch
 #from torchvision.ops.boxes import nms as nms_torch
 from torchvision.ops import nms
 
-#from efficientnet import EfficientNet as EffNet
-#from efficientnet.utils import MemoryEfficientSwish, Swish
-#from efficientnet.utils_extra import Conv2dStaticSamePadding, MaxPool2dStaticSamePadding
 from architectures.efficientnet import EfficientNet as EffNet
 from architectures.utils_efficientnet import MemoryEfficientSwish, Swish
 from architectures.utils_extra_efficientnet import Conv2dStaticSamePadding, MaxPool2dStaticSamePadding
 
-#from efficientdet.utils import Anchors
-#from efficientdet.loss import FocalLoss
-#from efficientdet.utils import BBoxTransform, ClipBoxes
-# from architectures.anchors import Anchors
-from architectures.utils_efficientdet import Anchors
-# from architectures.losses import FocalLoss
-from architectures.loss_efficientdet import FocalLoss
-from architectures.utils_efficientdet import BBoxTransform, ClipBoxes
+### Use original utils
+# from architectures.utils_efficientdet import Anchors
+# from architectures.loss_efficientdet import FocalLoss
+# from architectures.utils_efficientdet import BBoxTransform, ClipBoxes
+
+from architectures.anchors import Anchors
+from architectures.losses import FocalLoss
+from architectures.utils import BBoxTransform, ClipBoxes
 
 import pdb
 
@@ -476,7 +473,8 @@ class EfficientDet(nn.Module):
                                      num_classes=num_classes,
                                      num_layers=self.box_class_repeats[self.compound_coef])
 
-        self.anchors = Anchors(anchor_scale=self.anchor_scale[compound_coef], **kwargs)
+        # self.anchors = Anchors(anchor_scale=self.anchor_scale[compound_coef], **kwargs)
+        self.anchors = Anchors(**kwargs)
 
         self.focalLoss = FocalLoss()
 
@@ -550,8 +548,8 @@ class EfficientDet(nn.Module):
 
 
 
-def build_efficientdet(name, num_classes=80, **kwargs):
-    compound_coef = int(name.split('-')[1][1])
+def build_efficientdet(architecture, num_classes=80, **kwargs):
+    compound_coef = int(architecture.split('-')[1][1])
 
     return EfficientDet(num_classes=num_classes, compound_coef=compound_coef, **kwargs)
 
