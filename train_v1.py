@@ -278,7 +278,7 @@ def main():
 
     net_logger.info('Num Training Images: {}'.format(len(dataset_train)))
 
-    for epoch_num in range(start_epoch, start_epoch + args.epochs):
+    for epoch_num in range(start_epoch, args.epochs + 1):
         net_model.train()
         if isinstance(net_model, torch.nn.DataParallel):
             net_model.module.freeze_bn()

@@ -7,5 +7,9 @@ log/
 saved/
 *.json
 *.pth
+*.pt
 *.onnx
 
+video/
+inference_sample/
+out_tensor/
