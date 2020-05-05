@@ -38,22 +38,28 @@ dummy_input = torch.randn(1, 3, in_h, in_w, device='cuda')
 
 BACKBONE = 'shuflenetv2'
 BACKBONE = 'densenet'
-# BACKBONE = 'mnasnet'
-BACKBONE = 'mobilenet'
+BACKBONE = 'mnasnet'
+# BACKBONE = 'mobilenet'
 
 ksevendet_cfg = {
     'backbone'      : BACKBONE,
-    'head'          : 'fpn',
+    'neck'          : 'fpn',
     'num_classes'   : 2,
     'feature_pyramid_levels' : [3, 4, 5],
     'head_pyramid_levels'    : [3, 4, 5, 6, 7],
 }
 # net_model = shufflenetv2.shufflenet_v2_x0_5()
+
 # net_model = densenet.densenet121()
+
 # net_model = mnasnet.mnasnet0_5()
+# net_model = mnasnet.mnasnet0_75()
+# net_model = mnasnet.mnasnet1_0()
+net_model = mnasnet.mnasnet1_3()
+
 # net_model = mobilenet.mobilenet_v2()
 
-net_model = ksevendet.KSevenDet(ksevendet_cfg)
+# net_model = ksevendet.KSevenDet(ksevendet_cfg)
 
 print(net_model)
 

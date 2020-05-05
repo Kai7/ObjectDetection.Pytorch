@@ -17,7 +17,7 @@ from .layers import SelectAdaptivePool2d, DropBlock2d, DropPath, AvgPool2dSame, 
 from ksevendet.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 
-__all__ = ['ResNet', 'BasicBlock', 'Bottleneck']  # model_registry will add each entrypoint fn to this
+__all__ = ['ResNet', 'ResNetFeatures', 'BasicBlock', 'Bottleneck']  # model_registry will add each entrypoint fn to this
 
 
 def _cfg(url='', **kwargs):
@@ -469,12 +469,137 @@ class ResNet(nn.Module):
         return x
 
 
+class ResNetFeatures(nn.Module):
+    """ResNet / ResNeXt / SE-ResNeXt / SE-Net
+
+    Support resnet, res2net features
+    """
+    def __init__(self, block, layers, in_chans=3,
+                 cardinality=1, base_width=64, stem_width=64, stem_type='',
+                 block_reduce_first=1, down_kernel_size=1, avg_down=False, output_stride=32,
+                 act_layer=nn.ReLU, norm_layer=nn.BatchNorm2d, drop_rate=0.0, drop_path_rate=0.,
+                 drop_block_rate=0., global_pool='avg', zero_init_last_bn=True, block_args=None):
+        block_args = block_args or dict()
+        deep_stem = 'deep' in stem_type
+        self.inplanes = stem_width * 2 if deep_stem else 64
+        self.cardinality = cardinality
+        self.base_width = base_width
+        self.drop_rate = drop_rate
+        self.expansion = block.expansion
+        super(ResNetFeatures, self).__init__()
+
+        # Stem
+        if deep_stem:
+            stem_chs_1 = stem_chs_2 = stem_width
+            if 'tiered' in stem_type:
+                stem_chs_1 = 3 * (stem_width // 4)
+                stem_chs_2 = stem_width if 'narrow' in stem_type else 6 * (stem_width // 4)
+            self.conv1 = nn.Sequential(*[
+                nn.Conv2d(in_chans, stem_chs_1, 3, stride=2, padding=1, bias=False),
+                norm_layer(stem_chs_1),
+                act_layer(inplace=True),
+                nn.Conv2d(stem_chs_1, stem_chs_2, 3, stride=1, padding=1, bias=False),
+                norm_layer(stem_chs_2),
+                act_layer(inplace=True),
+                nn.Conv2d(stem_chs_2, self.inplanes, 3, stride=1, padding=1, bias=False)])
+        else:
+            self.conv1 = nn.Conv2d(in_chans, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
+        self.bn1 = norm_layer(self.inplanes)
+        self.act1 = act_layer(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+
+        # Feature Blocks
+        dp = DropPath(drop_path_rate) if drop_path_rate else None
+        db_3 = DropBlock2d(drop_block_rate, 7, 0.25) if drop_block_rate else None
+        db_4 = DropBlock2d(drop_block_rate, 7, 1.00) if drop_block_rate else None
+        channels, strides, dilations = [64, 128, 256, 512], [1, 2, 2, 2], [1] * 4
+        if output_stride == 16:
+            strides[3] = 1
+            dilations[3] = 2
+        elif output_stride == 8:
+            strides[2:4] = [1, 1]
+            dilations[2:4] = [2, 4]
+        else:
+            assert output_stride == 32
+        layer_args = list(zip(channels, layers, strides, dilations))
+        layer_kwargs = dict(
+            reduce_first=block_reduce_first, act_layer=act_layer, norm_layer=norm_layer,
+            avg_down=avg_down, down_kernel_size=down_kernel_size, drop_path=dp, **block_args)
+        self.layer1 = self._make_layer(block, *layer_args[0], **layer_kwargs)
+        self.layer2 = self._make_layer(block, *layer_args[1], **layer_kwargs)
+        self.layer3 = self._make_layer(block, drop_block=db_3, *layer_args[2], **layer_kwargs)
+        self.layer4 = self._make_layer(block, drop_block=db_4, *layer_args[3], **layer_kwargs)
+
+        self.features_num = dict()
+        for i, idx in enumerate([2, 3, 4, 5]):
+            self.features_num[f'c{idx}'] = channels[i] * block.expansion
+        self.out_indices = [f'c{idx}' for idx in [3, 4, 5]]
+
+    def init_weights(self, zero_init_last_bn=True):
+        # Official init from torch repo.
+        for n, m in self.named_modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1.)
+                nn.init.constant_(m.bias, 0.)
+        if zero_init_last_bn:
+            for m in self.modules():
+                if hasattr(m, 'zero_init_last_bn'):
+                    m.zero_init_last_bn()
+
+    def feature_channels(self):
+        return [self.features_num[idx] for idx in self.out_indices]
+
+    def _make_layer(self, block, planes, blocks, stride=1, dilation=1, reduce_first=1,
+                    avg_down=False, down_kernel_size=1, **kwargs):
+        downsample = None
+        first_dilation = 1 if dilation in (1, 2) else 2
+        if stride != 1 or self.inplanes != planes * block.expansion:
+            downsample_args = dict(
+                in_channels=self.inplanes, out_channels=planes * block.expansion, kernel_size=down_kernel_size,
+                stride=stride, dilation=dilation, first_dilation=first_dilation, norm_layer=kwargs.get('norm_layer'))
+            downsample = downsample_avg(**downsample_args) if avg_down else downsample_conv(**downsample_args)
+
+        block_kwargs = dict(
+            cardinality=self.cardinality, base_width=self.base_width, reduce_first=reduce_first,
+            dilation=dilation, **kwargs)
+        layers = [block(self.inplanes, planes, stride, downsample, first_dilation=first_dilation, **block_kwargs)]
+        self.inplanes = planes * block.expansion
+        layers += [block(self.inplanes, planes, **block_kwargs) for _ in range(1, blocks)]
+
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        print(f'Input Shape : {str(x.shape)}')
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.act1(x)
+        x_stem = self.maxpool(x)
+
+        x_1 = self.layer1(x_stem)
+        x_2 = self.layer2(x_1)
+        x_3 = self.layer3(x_2)
+        x_4 = self.layer4(x_3)
+
+        print(f'Stem Shape : {str(x_stem.shape)}')
+        print(f'Block_1 Shape : {str(x_1.shape)}')
+        print(f'Block_2 Shape : {str(x_2.shape)}')
+        print(f'Block_3 Shape : {str(x_3.shape)}')
+        print(f'Block_4 Shape : {str(x_4.shape)}')
+
+        return [x_2, x_3, x_4]
+
+
 @register_model
 def resnet18(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """Constructs a ResNet-18 model.
     """
     default_cfg = default_cfgs['resnet18']
-    model = ResNet(BasicBlock, [2, 2, 2, 2], num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(BasicBlock, [2, 2, 2, 2], in_chans=in_chans, **kwargs)
+    else:
+        model = ResNet(BasicBlock, [2, 2, 2, 2], num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -486,7 +611,10 @@ def resnet34(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """Constructs a ResNet-34 model.
     """
     default_cfg = default_cfgs['resnet34']
-    model = ResNet(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(BasicBlock, [3, 4, 6, 3], in_chans=in_chans, **kwargs)
+    else:
+        model = ResNet(BasicBlock, [3, 4, 6, 3], num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -498,7 +626,10 @@ def resnet26(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """Constructs a ResNet-26 model.
     """
     default_cfg = default_cfgs['resnet26']
-    model = ResNet(Bottleneck, [2, 2, 2, 2], num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(Bottleneck, [2, 2, 2, 2], in_chans=in_chans, **kwargs)
+    else:
+        model = ResNet(Bottleneck, [2, 2, 2, 2], num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -511,9 +642,14 @@ def resnet26d(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     This is technically a 28 layer ResNet, sticking with 'd' modifier from Gluon for now.
     """
     default_cfg = default_cfgs['resnet26d']
-    model = ResNet(
-        Bottleneck, [2, 2, 2, 2], stem_width=32, stem_type='deep', avg_down=True,
-        num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(
+            Bottleneck, [2, 2, 2, 2], stem_width=32, stem_type='deep', avg_down=True,
+            in_chans=in_chans, **kwargs)
+    else:
+        model = ResNet(
+            Bottleneck, [2, 2, 2, 2], stem_width=32, stem_type='deep', avg_down=True,
+            num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -525,7 +661,10 @@ def resnet50(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """Constructs a ResNet-50 model.
     """
     default_cfg = default_cfgs['resnet50']
-    model = ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(Bottleneck, [3, 4, 6, 3], in_chans=in_chans, **kwargs)
+    else:
+        model = ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -537,9 +676,14 @@ def resnet50d(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """Constructs a ResNet-50-D model.
     """
     default_cfg = default_cfgs['resnet50d']
-    model = ResNet(
-        Bottleneck, [3, 4, 6, 3], stem_width=32, stem_type='deep', avg_down=True,
-        num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(
+            Bottleneck, [3, 4, 6, 3], stem_width=32, stem_type='deep', avg_down=True,
+            in_chans=in_chans, **kwargs)
+    else:
+        model = ResNet(
+            Bottleneck, [3, 4, 6, 3], stem_width=32, stem_type='deep', avg_down=True,
+            num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -551,7 +695,10 @@ def resnet101(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """Constructs a ResNet-101 model.
     """
     default_cfg = default_cfgs['resnet101']
-    model = ResNet(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(Bottleneck, [3, 4, 23, 3], in_chans=in_chans, **kwargs)
+    else:
+        model = ResNet(Bottleneck, [3, 4, 23, 3], num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -563,7 +710,10 @@ def resnet152(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """Constructs a ResNet-152 model.
     """
     default_cfg = default_cfgs['resnet152']
-    model = ResNet(Bottleneck, [3, 8, 36, 3], num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(Bottleneck, [3, 8, 36, 3], in_chans=in_chans, **kwargs)
+    else:
+        model = ResNet(Bottleneck, [3, 8, 36, 3], num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)

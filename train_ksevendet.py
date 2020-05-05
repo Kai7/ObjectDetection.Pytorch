@@ -113,8 +113,8 @@ def main():
 
     # BACKBONE = 'shuflenetv2'
     # BACKBONE = 'densenet'
-    # BACKBONE = 'mnasnet'
-    BACKBONE = 'mobilenet'
+    BACKBONE = 'mnasnet'
+    # BACKBONE = 'mobilenet'
 
     support_architectures = [
         'ksevendet',
@@ -169,8 +169,8 @@ def main():
     # Create the data loaders
     if args.dataset_type == 'kseven':
         dataset_train = KSevenDataset(args.dataset_root, set_name='train', transform=transforms.Compose(transfrom_funcs_train))
-        dataset_valid = KSevenDataset(args.dataset_root, set_name='valid', transform=transforms.Compose(transfrom_funcs_valid))
-        # dataset_valid = KSevenDataset(args.dataset_root, set_name='train', transform=transforms.Compose(transfrom_funcs_valid))
+        # dataset_valid = KSevenDataset(args.dataset_root, set_name='valid', transform=transforms.Compose(transfrom_funcs_valid))
+        dataset_valid = KSevenDataset(args.dataset_root, set_name='train', transform=transforms.Compose(transfrom_funcs_valid))
     elif args.dataset_type == 'coco':
         dataset_train = CocoDataset(args.dataset_root, set_name='train', transform=transforms.Compose(transfrom_funcs_train))
         dataset_valid = CocoDataset(args.dataset_root, set_name='valid', transform=transforms.Compose(transfrom_funcs_valid))
@@ -282,8 +282,10 @@ def main():
         optimizer = optim.AdamW(net_model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     elif args.optim == 'adam':
         optimizer = optim.Adam(net_model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    elif args.optim == 'adagrad':
+        optimizer = optim.Adagrad(net_model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     elif args.optim == 'sgd':
-        optimizer = torch.optim.SGD(net_model.parameters(), args.lr, weight_decay=args.weight_decay, momentum=0.9, nesterov=True)
+        optimizer = torch.optim.SGD(net_model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=0.9, nesterov=True)
     else:
         raise ValueError(f'Unknown optimizer type {args.optim}')
 

@@ -15,7 +15,7 @@ from .layers import SelectAdaptivePool2d
 from ksevendet.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 import re
 
-__all__ = ['DenseNet']
+__all__ = ['DenseNet', 'DenseNetFeatures']
 
 
 def _cfg(url=''):
@@ -144,6 +144,92 @@ class DenseNet(nn.Module):
         x = self.classifier(x)
         return x
 
+class DenseNetFeatures(nn.Module):
+    r"""Densenet-BC model class, based on
+    `"Densely Connected Convolutional Networks" <https://arxiv.org/pdf/1608.06993.pdf>`
+
+    Args:
+        growth_rate (int) - how many filters to add each layer (`k` in paper)
+        block_config (list of 4 ints) - how many layers in each pooling block
+        num_init_features (int) - the number of filters to learn in the first convolution layer
+        bn_size (int) - multiplicative factor for number of bottle neck layers
+          (i.e. bn_size * k features in the bottleneck layer)
+        drop_rate (float) - dropout rate after each dense layer
+    """
+    def __init__(self, growth_rate=32, block_config=(6, 12, 24, 16),
+                 num_init_features=64, bn_size=4, drop_rate=0,
+                 in_chans=3):
+        self.drop_rate = drop_rate
+        super(DenseNetFeatures, self).__init__()
+        self.features_num = dict()
+        self.block_config = block_config
+
+        # First convolution
+        self.features = nn.Sequential(OrderedDict([
+            ('conv0', nn.Conv2d(in_chans, num_init_features, kernel_size=7, stride=2, padding=3, bias=False)),
+            ('norm0', nn.BatchNorm2d(num_init_features)),
+            ('relu0', nn.ReLU(inplace=True)),
+            ('pool0', nn.MaxPool2d(kernel_size=3, stride=2, padding=1)),
+        ]))
+
+        self.features_num['c2'] = num_init_features
+
+        # Each denseblock
+        num_features = num_init_features
+        self.feature_blocks = nn.ModuleList()
+        for i, num_layers in enumerate(block_config):
+            block = _DenseBlock(num_layers=num_layers, num_input_features=num_features,
+                                bn_size=bn_size, growth_rate=growth_rate, drop_rate=drop_rate)
+            # self.features.add_module('denseblock%d' % (i + 1), block)
+            _block = nn.Sequential(OrderedDict([('denseblock%d' % (i + 1), block),]))
+            num_features = num_features + num_layers * growth_rate
+            if i != len(block_config) - 1:
+                trans = _Transition(
+                    num_input_features=num_features, num_output_features=num_features // 2)
+                # self.features.add_module('transition%d' % (i + 1), trans)
+                _block.add_module('transition%d' % (i + 1), trans)
+                num_features = num_features // 2
+                self.features_num['c{}'.format(2+i+1)] = num_features
+            else:
+                self.features_num['c{}'.format(2+i)] = num_features
+
+            self.feature_blocks.append(_block)
+
+        self.out_indices = [f'c{i}' for i in [3, 4, 5]]
+
+        # Final batch norm
+        # self.features.add_module('norm5', nn.BatchNorm2d(num_features))
+
+    def init_weights(self):
+        # Official init from torch repo.
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.constant_(m.bias, 0)
+    
+    def feature_channels(self):
+        return [self.features_num[idx] for idx in self.out_indices]
+
+
+    def forward(self, x):
+        # print(f'Input Shape : {str(x.shape)}')
+        RETURN_IDXES = [0, 1, 3]
+
+        x_feature = self.features(x)
+        # print(f'First Conv Shape : {str(x_feature.shape)}')
+        feature_maps = list()
+        for i, _module in enumerate(self.feature_blocks):
+            x_feature = _module(x_feature)            
+            # print(f'Block_{i} Shape : {str(x_feature.shape)}')
+            if i in RETURN_IDXES:
+                feature_maps.append(x_feature)
+
+        return feature_maps
+
 
 def _filter_pretrained(state_dict):
     pattern = re.compile(
@@ -165,36 +251,12 @@ def densenet121(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     `"Densely Connected Convolutional Networks" <https://arxiv.org/pdf/1608.06993.pdf>`
     """
     default_cfg = default_cfgs['densenet121']
-    model = DenseNet(num_init_features=64, growth_rate=32, block_config=(6, 12, 24, 16),
-                     num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans, filter_fn=_filter_pretrained)
-    return model
-
-
-@register_model
-def densenet169(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    r"""Densenet-169 model from
-    `"Densely Connected Convolutional Networks" <https://arxiv.org/pdf/1608.06993.pdf>`
-    """
-    default_cfg = default_cfgs['densenet169']
-    model = DenseNet(num_init_features=64, growth_rate=32, block_config=(6, 12, 32, 32),
-                     num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans, filter_fn=_filter_pretrained)
-    return model
-
-
-@register_model
-def densenet201(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    r"""Densenet-201 model from
-    `"Densely Connected Convolutional Networks" <https://arxiv.org/pdf/1608.06993.pdf>`
-    """
-    default_cfg = default_cfgs['densenet201']
-    model = DenseNet(num_init_features=64, growth_rate=32, block_config=(6, 12, 48, 32),
-                     num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = DenseNetFeatures(num_init_features=64, growth_rate=32, block_config=(6, 12, 24, 16),
+                                 in_chans=in_chans, **kwargs)
+    else:
+        model = DenseNet(num_init_features=64, growth_rate=32, block_config=(6, 12, 24, 16),
+                         num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans, filter_fn=_filter_pretrained)
@@ -207,9 +269,50 @@ def densenet161(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     `"Densely Connected Convolutional Networks" <https://arxiv.org/pdf/1608.06993.pdf>`
     """
     default_cfg = default_cfgs['densenet161']
-    model = DenseNet(num_init_features=96, growth_rate=48, block_config=(6, 12, 36, 24),
-                     num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = DenseNetFeatures(num_init_features=96, growth_rate=48, block_config=(6, 12, 36, 24),
+                                 in_chans=in_chans, **kwargs)
+    else:
+        model = DenseNet(num_init_features=96, growth_rate=48, block_config=(6, 12, 36, 24),
+                         num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans, filter_fn=_filter_pretrained)
     return model
+
+
+@register_model
+def densenet169(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+    r"""Densenet-169 model from
+    `"Densely Connected Convolutional Networks" <https://arxiv.org/pdf/1608.06993.pdf>`
+    """
+    default_cfg = default_cfgs['densenet169']
+    if kwargs.pop('features_only', False):
+        model = DenseNetFeatures(num_init_features=64, growth_rate=32, block_config=(6, 12, 32, 32),
+                                 in_chans=in_chans, **kwargs)
+    else:
+        model = DenseNet(num_init_features=64, growth_rate=32, block_config=(6, 12, 32, 32),
+                         num_classes=num_classes, in_chans=in_chans, **kwargs)
+    model.default_cfg = default_cfg
+    if pretrained:
+        load_pretrained(model, default_cfg, num_classes, in_chans, filter_fn=_filter_pretrained)
+    return model
+
+
+@register_model
+def densenet201(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+    r"""Densenet-201 model from
+    `"Densely Connected Convolutional Networks" <https://arxiv.org/pdf/1608.06993.pdf>`
+    """
+    default_cfg = default_cfgs['densenet201']
+    if kwargs.pop('features_only', False):
+        model = DenseNetFeatures(num_init_features=64, growth_rate=32, block_config=(6, 12, 48, 32),
+                                 in_chans=in_chans, **kwargs)
+    else:
+        model = DenseNet(num_init_features=64, growth_rate=32, block_config=(6, 12, 48, 32),
+                         num_classes=num_classes, in_chans=in_chans, **kwargs)
+    model.default_cfg = default_cfg
+    if pretrained:
+        load_pretrained(model, default_cfg, num_classes, in_chans, filter_fn=_filter_pretrained)
+    return model
+

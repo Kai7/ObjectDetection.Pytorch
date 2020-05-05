@@ -158,7 +158,10 @@ class MNASNet(torch.nn.Module):
         #                                nn.Linear(1280, num_classes))
         self._initialize_weights()
 
-        self.feature_maps_channels = [24, 48, 160]
+        #self.feature_maps_channels = [24, 48, 160]  # for mnasnet0_5
+        self.feature_maps_channels = [32, 72, 240]  # for mnasnet0_75
+        #self.feature_maps_channels = [40, 96, 320]  # for mnasnet1_0
+        #self.feature_maps_channels = [56, 128, 416]  # for mnasnet1_3
 
     def forward(self, x):
         # print(f'Input Shape : {str(x.shape)}')

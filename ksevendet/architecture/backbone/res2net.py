@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .resnet import ResNet
+from .resnet import ResNet, ResNetFeatures
 from .registry import register_model
 from .helpers import load_pretrained
 from .layers import SEModule
@@ -133,8 +133,12 @@ def res2net50_26w_4s(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """
     default_cfg = default_cfgs['res2net50_26w_4s']
     res2net_block_args = dict(scale=4)
-    model = ResNet(Bottle2neck, [3, 4, 6, 3], base_width=26,
-                   num_classes=num_classes, in_chans=in_chans, block_args=res2net_block_args, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(Bottle2neck, [3, 4, 6, 3], base_width=26,
+                               in_chans=in_chans, block_args=res2net_block_args, **kwargs)
+    else:
+        model = ResNet(Bottle2neck, [3, 4, 6, 3], base_width=26,
+                       num_classes=num_classes, in_chans=in_chans, block_args=res2net_block_args, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -149,8 +153,12 @@ def res2net101_26w_4s(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """
     default_cfg = default_cfgs['res2net101_26w_4s']
     res2net_block_args = dict(scale=4)
-    model = ResNet(Bottle2neck, [3, 4, 23, 3], base_width=26,
-                   num_classes=num_classes, in_chans=in_chans, block_args=res2net_block_args, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(Bottle2neck, [3, 4, 23, 3], base_width=26,
+                               in_chans=in_chans, block_args=res2net_block_args, **kwargs)
+    else:
+        model = ResNet(Bottle2neck, [3, 4, 23, 3], base_width=26,
+                       num_classes=num_classes, in_chans=in_chans, block_args=res2net_block_args, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -165,8 +173,12 @@ def res2net50_26w_6s(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """
     default_cfg = default_cfgs['res2net50_26w_6s']
     res2net_block_args = dict(scale=6)
-    model = ResNet(Bottle2neck, [3, 4, 6, 3], base_width=26,
-                   num_classes=num_classes, in_chans=in_chans, block_args=res2net_block_args, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(Bottle2neck, [3, 4, 6, 3], base_width=26,
+                                in_chans=in_chans, block_args=res2net_block_args, **kwargs)
+    else:
+        model = ResNet(Bottle2neck, [3, 4, 6, 3], base_width=26,
+                       num_classes=num_classes, in_chans=in_chans, block_args=res2net_block_args, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -181,8 +193,12 @@ def res2net50_26w_8s(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """
     default_cfg = default_cfgs['res2net50_26w_8s']
     res2net_block_args = dict(scale=8)
-    model = ResNet(Bottle2neck, [3, 4, 6, 3], base_width=26,
-                   num_classes=num_classes, in_chans=in_chans, block_args=res2net_block_args, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(Bottle2neck, [3, 4, 6, 3], base_width=26,
+                               in_chans=in_chans, block_args=res2net_block_args, **kwargs)
+    else:
+        model = ResNet(Bottle2neck, [3, 4, 6, 3], base_width=26,
+                       num_classes=num_classes, in_chans=in_chans, block_args=res2net_block_args, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -197,8 +213,12 @@ def res2net50_48w_2s(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """
     default_cfg = default_cfgs['res2net50_48w_2s']
     res2net_block_args = dict(scale=2)
-    model = ResNet(Bottle2neck, [3, 4, 6, 3], base_width=48,
-                   num_classes=num_classes, in_chans=in_chans, block_args=res2net_block_args, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(Bottle2neck, [3, 4, 6, 3], base_width=48,
+                               in_chans=in_chans, block_args=res2net_block_args, **kwargs)
+    else:
+        model = ResNet(Bottle2neck, [3, 4, 6, 3], base_width=48,
+                       num_classes=num_classes, in_chans=in_chans, block_args=res2net_block_args, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -213,8 +233,12 @@ def res2net50_14w_8s(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """
     default_cfg = default_cfgs['res2net50_14w_8s']
     res2net_block_args = dict(scale=8)
-    model = ResNet(Bottle2neck, [3, 4, 6, 3], base_width=14, num_classes=num_classes, in_chans=in_chans,
-                   block_args=res2net_block_args, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(Bottle2neck, [3, 4, 6, 3], base_width=14, in_chans=in_chans,
+                               block_args=res2net_block_args, **kwargs)
+    else:
+        model = ResNet(Bottle2neck, [3, 4, 6, 3], base_width=14, num_classes=num_classes, in_chans=in_chans,
+                       block_args=res2net_block_args, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -229,8 +253,12 @@ def res2next50(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """
     default_cfg = default_cfgs['res2next50']
     res2net_block_args = dict(scale=4)
-    model = ResNet(Bottle2neck, [3, 4, 6, 3], base_width=4, cardinality=8,
-                   num_classes=1000, in_chans=in_chans, block_args=res2net_block_args, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(Bottle2neck, [3, 4, 6, 3], base_width=4, cardinality=8,
+                               in_chans=in_chans, block_args=res2net_block_args, **kwargs)
+    else:
+        model = ResNet(Bottle2neck, [3, 4, 6, 3], base_width=4, cardinality=8,
+                       num_classes=1000, in_chans=in_chans, block_args=res2net_block_args, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)

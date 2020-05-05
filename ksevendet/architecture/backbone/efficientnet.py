@@ -459,14 +459,18 @@ class EfficientNetFeatures(nn.Module):
         return [self._feature_info[i] for i in self.out_indices]
 
     def forward(self, x):
+        print(f'Input Shape : {str(x.shape)}')
         x = self.conv_stem(x)
+        print(f'x_stem Shape : {str(x.shape)}')
         x = self.bn1(x)
         x = self.act1(x)
         if self.feature_hooks is None:
             features = []
             for i, b in enumerate(self.blocks):
                 x = b(x)
+                print(f'Block_{i} Shape : {str(x.shape)}')
                 if i in self._stage_to_feature_idx:
+                    print('add feature ...')
                     features.append(x)
             return features
         else:

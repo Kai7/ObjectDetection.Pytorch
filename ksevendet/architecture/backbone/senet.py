@@ -20,7 +20,7 @@ from .layers import SelectAdaptivePool2d
 # from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from ksevendet.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
-__all__ = ['SENet']
+__all__ = ['SENet', 'SENetFeatures']
 
 
 def _cfg(url='', **kwargs):
@@ -57,12 +57,12 @@ default_cfgs = {
 }
 
 
-def _weight_init(m):
-    if isinstance(m, nn.Conv2d):
-        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-    elif isinstance(m, nn.BatchNorm2d):
-        nn.init.constant_(m.weight, 1.)
-        nn.init.constant_(m.bias, 0.)
+# def _weight_init(m):
+#     if isinstance(m, nn.Conv2d):
+#         nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+#     elif isinstance(m, nn.BatchNorm2d):
+#         nn.init.constant_(m.weight, 1.)
+#         nn.init.constant_(m.bias, 0.)
 
 
 class SEModule(nn.Module):
@@ -397,13 +397,153 @@ class SENet(nn.Module):
         return x
 
 
+class SENetFeatures(nn.Module):
+
+    def __init__(self, block, layers, groups, reduction, drop_rate=0.2,
+                 in_chans=3, inplanes=128, input_3x3=True, downsample_kernel_size=3,
+                 downsample_padding=1, num_classes=1000, global_pool='avg'):
+        """
+        Parameters
+        ----------
+        see SENet
+        """
+        super(SENetFeatures, self).__init__()
+        self.inplanes = inplanes
+        self.num_classes = num_classes
+        self.drop_rate = drop_rate
+        if input_3x3:
+            layer0_modules = [
+                ('conv1', nn.Conv2d(in_chans, 64, 3, stride=2, padding=1, bias=False)),
+                ('bn1', nn.BatchNorm2d(64)),
+                ('relu1', nn.ReLU(inplace=True)),
+                ('conv2', nn.Conv2d(64, 64, 3, stride=1, padding=1, bias=False)),
+                ('bn2', nn.BatchNorm2d(64)),
+                ('relu2', nn.ReLU(inplace=True)),
+                ('conv3', nn.Conv2d(64, inplanes, 3, stride=1, padding=1, bias=False)),
+                ('bn3', nn.BatchNorm2d(inplanes)),
+                ('relu3', nn.ReLU(inplace=True)),
+            ]
+        else:
+            layer0_modules = [
+                ('conv1', nn.Conv2d(
+                    in_chans, inplanes, kernel_size=7, stride=2, padding=3, bias=False)),
+                ('bn1', nn.BatchNorm2d(inplanes)),
+                ('relu1', nn.ReLU(inplace=True)),
+            ]
+        # To preserve compatibility with Caffe weights `ceil_mode=True`
+        # is used instead of `padding=1`.
+        layer0_modules.append(('pool', nn.MaxPool2d(3, stride=2, ceil_mode=True)))
+        self.layer0 = nn.Sequential(OrderedDict(layer0_modules))
+
+        planes = [64, 128, 256, 512]
+        self.layer1 = self._make_layer(
+            block,
+            planes=planes[0],
+            blocks=layers[0],
+            groups=groups,
+            reduction=reduction,
+            downsample_kernel_size=1,
+            downsample_padding=0
+        )
+        self.layer2 = self._make_layer(
+            block,
+            planes=planes[1],
+            blocks=layers[1],
+            stride=2,
+            groups=groups,
+            reduction=reduction,
+            downsample_kernel_size=downsample_kernel_size,
+            downsample_padding=downsample_padding
+        )
+        self.layer3 = self._make_layer(
+            block,
+            planes=planes[2],
+            blocks=layers[2],
+            stride=2,
+            groups=groups,
+            reduction=reduction,
+            downsample_kernel_size=downsample_kernel_size,
+            downsample_padding=downsample_padding
+        )
+        self.layer4 = self._make_layer(
+            block,
+            planes=planes[3],
+            blocks=layers[3],
+            stride=2,
+            groups=groups,
+            reduction=reduction,
+            downsample_kernel_size=downsample_kernel_size,
+            downsample_padding=downsample_padding
+        )
+
+        self.features_num = dict()
+        for i, idx in enumerate([2, 3, 4, 5]):
+            self.features_num[f'c{idx}'] = planes[i] * block.expansion
+        self.out_indices = [f'c{idx}' for idx in [3, 4, 5]]
+
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1.)
+                nn.init.constant_(m.bias, 0.)
+
+    def feature_channels(self):
+        return [self.features_num[idx] for idx in self.out_indices]
+
+    def _make_layer(self, block, planes, blocks, groups, reduction, stride=1,
+                    downsample_kernel_size=1, downsample_padding=0):
+        downsample = None
+        if stride != 1 or self.inplanes != planes * block.expansion:
+            downsample = nn.Sequential(
+                nn.Conv2d(self.inplanes, planes * block.expansion,
+                          kernel_size=downsample_kernel_size, stride=stride,
+                          padding=downsample_padding, bias=False),
+                nn.BatchNorm2d(planes * block.expansion),
+            )
+
+        layers = [block(
+            self.inplanes, planes, groups, reduction, stride, downsample)]
+        self.inplanes = planes * block.expansion
+        for i in range(1, blocks):
+            layers.append(block(self.inplanes, planes, groups, reduction))
+
+        return nn.Sequential(*layers)
+
+
+    def forward(self, x):
+        print(f'Input Shape : {str(x.shape)}')
+
+        x_0 = self.layer0(x)
+        x_1 = self.layer1(x_0)
+        x_2 = self.layer2(x_1)
+        x_3 = self.layer3(x_2)
+        x_4 = self.layer4(x_3)
+
+        print(f'Block_0 Shape : {str(x_0.shape)}')
+        print(f'Block_1 Shape : {str(x_1.shape)}')
+        print(f'Block_2 Shape : {str(x_2.shape)}')
+        print(f'Block_3 Shape : {str(x_3.shape)}')
+        print(f'Block_4 Shape : {str(x_4.shape)}')
+        return x
+
+
+
 @register_model
 def seresnet18(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     default_cfg = default_cfgs['seresnet18']
-    model = SENet(SEResNetBlock, [2, 2, 2, 2], groups=1, reduction=16,
-                  inplanes=64, input_3x3=False,
-                  downsample_kernel_size=1, downsample_padding=0,
-                  num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = SENetFeatures(SEResNetBlock, [2, 2, 2, 2], groups=1, reduction=16,
+                              inplanes=64, input_3x3=False,
+                              downsample_kernel_size=1, downsample_padding=0,
+                              in_chans=in_chans, **kwargs)
+    else:
+        model = SENet(SEResNetBlock, [2, 2, 2, 2], groups=1, reduction=16,
+                      inplanes=64, input_3x3=False,
+                      downsample_kernel_size=1, downsample_padding=0,
+                      num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -413,10 +553,16 @@ def seresnet18(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
 @register_model
 def seresnet34(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     default_cfg = default_cfgs['seresnet34']
-    model = SENet(SEResNetBlock, [3, 4, 6, 3], groups=1, reduction=16,
-                  inplanes=64, input_3x3=False,
-                  downsample_kernel_size=1, downsample_padding=0,
-                  num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = SENetFeatures(SEResNetBlock, [3, 4, 6, 3], groups=1, reduction=16,
+                              inplanes=64, input_3x3=False,
+                              downsample_kernel_size=1, downsample_padding=0,
+                              in_chans=in_chans, **kwargs)
+    else:
+        model = SENet(SEResNetBlock, [3, 4, 6, 3], groups=1, reduction=16,
+                      inplanes=64, input_3x3=False,
+                      downsample_kernel_size=1, downsample_padding=0,
+                      num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -426,10 +572,16 @@ def seresnet34(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
 @register_model
 def seresnet50(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     default_cfg = default_cfgs['seresnet50']
-    model = SENet(SEResNetBottleneck, [3, 4, 6, 3], groups=1, reduction=16,
-                  inplanes=64, input_3x3=False,
-                  downsample_kernel_size=1, downsample_padding=0,
-                  num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = SENetFeatures(SEResNetBottleneck, [3, 4, 6, 3], groups=1, reduction=16,
+                              inplanes=64, input_3x3=False,
+                              downsample_kernel_size=1, downsample_padding=0,
+                              in_chans=in_chans, **kwargs)
+    else:
+        model = SENet(SEResNetBottleneck, [3, 4, 6, 3], groups=1, reduction=16,
+                      inplanes=64, input_3x3=False,
+                      downsample_kernel_size=1, downsample_padding=0,
+                      num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -439,10 +591,16 @@ def seresnet50(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
 @register_model
 def seresnet101(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     default_cfg = default_cfgs['seresnet101']
-    model = SENet(SEResNetBottleneck, [3, 4, 23, 3], groups=1, reduction=16,
-                  inplanes=64, input_3x3=False,
-                  downsample_kernel_size=1, downsample_padding=0,
-                  num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = SENetFeatures(SEResNetBottleneck, [3, 4, 23, 3], groups=1, reduction=16,
+                              inplanes=64, input_3x3=False,
+                              downsample_kernel_size=1, downsample_padding=0,
+                              in_chans=in_chans, **kwargs)
+    else:
+        model = SENet(SEResNetBottleneck, [3, 4, 23, 3], groups=1, reduction=16,
+                      inplanes=64, input_3x3=False,
+                      downsample_kernel_size=1, downsample_padding=0,
+                      num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -452,10 +610,16 @@ def seresnet101(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
 @register_model
 def seresnet152(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     default_cfg = default_cfgs['seresnet152']
-    model = SENet(SEResNetBottleneck, [3, 8, 36, 3], groups=1, reduction=16,
-                  inplanes=64, input_3x3=False,
-                  downsample_kernel_size=1, downsample_padding=0,
-                  num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = SENetFeatures(SEResNetBottleneck, [3, 8, 36, 3], groups=1, reduction=16,
+                              inplanes=64, input_3x3=False,
+                              downsample_kernel_size=1, downsample_padding=0,
+                              in_chans=in_chans, **kwargs)
+    else:
+        model = SENet(SEResNetBottleneck, [3, 8, 36, 3], groups=1, reduction=16,
+                      inplanes=64, input_3x3=False,
+                      downsample_kernel_size=1, downsample_padding=0,
+                      num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -465,8 +629,12 @@ def seresnet152(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
 @register_model
 def senet154(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     default_cfg = default_cfgs['senet154']
-    model = SENet(SEBottleneck, [3, 8, 36, 3], groups=64, reduction=16,
-                  num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = SENetFeatures(SEBottleneck, [3, 8, 36, 3], groups=64, reduction=16,
+                              in_chans=in_chans, **kwargs)
+    else:
+        model = SENet(SEBottleneck, [3, 8, 36, 3], groups=64, reduction=16,
+                      num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
