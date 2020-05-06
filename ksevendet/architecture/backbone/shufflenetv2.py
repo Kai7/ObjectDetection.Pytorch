@@ -149,7 +149,7 @@ class ShuffleNetV2(nn.Module):
 
 
 class ShuffleNetV2Features(nn.Module):
-    def __init__(self, stages_repeats, stages_out_channels, num_classes=1000, inverted_residual=InvertedResidual):
+    def __init__(self, stages_repeats, stages_out_channels, inverted_residual=InvertedResidual, **kwargs):
         super(ShuffleNetV2Features, self).__init__()
 
         if len(stages_repeats) != 3:
@@ -195,7 +195,7 @@ class ShuffleNetV2Features(nn.Module):
         return [self.features_num[idx] for idx in self.out_indices]
 
     def forward(self, x):
-        print(f'Input Shape : {str(x.shape)}')
+        # print(f'Input Shape : {str(x.shape)}')
 
         x = self.conv1(x)
         x = self.maxpool(x)
@@ -204,9 +204,9 @@ class ShuffleNetV2Features(nn.Module):
         x_stage_4 = self.stage4(x_stage_3)
         # x_conv5 = self.conv5(x_stage_4)
      
-        print(f'x_stage_2 Shape : {str(x_stage_2.shape)}')
-        print(f'x_stage_3 Shape : {str(x_stage_3.shape)}')
-        print(f'x_stage_4 Shape : {str(x_stage_4.shape)}')
+        # print(f'x_stage_2 Shape : {str(x_stage_2.shape)}')
+        # print(f'x_stage_3 Shape : {str(x_stage_3.shape)}')
+        # print(f'x_stage_4 Shape : {str(x_stage_4.shape)}')
         # print(f'x_conv5 Shape : {str(x_conv5.shape)}')
 
         return [x_stage_2, x_stage_3, x_stage_4]

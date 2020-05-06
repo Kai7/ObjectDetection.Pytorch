@@ -206,7 +206,10 @@ def init_weights(model):
         is_conv_layer = isinstance(module, nn.Conv2d)
 
         if is_conv_layer:
-            nn.init.kaiming_uniform_(module.weight.data)
+            # print(name)
+            # print(module)
+            # nn.init.kaiming_uniform_(module.weight.data)
+            nn.init.kaiming_normal_(module.weight.data)
 
             if module.bias is not None:
                 module.bias.data.zero_()

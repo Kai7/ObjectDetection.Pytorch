@@ -177,8 +177,8 @@ class KSevenDet(nn.Module):
         super(KSevenDet, self).__init__()
         # self.backbone = _get_backbone(cfg)
         self.num_classes = cfg['num_classes']
-        self.feature_pyramid_levels = cfg['feature_pyramid_levels']
-        self.head_pyramid_levels    = cfg['head_pyramid_levels']
+        self.backbone_feature_pyramid_levels = cfg['backbone_feature_pyramid_levels']
+        self.neck_feature_pyramid_levels    = cfg['neck_feature_pyramid_levels']
         self.iou_threshold = iou_threshold
 
         self.convert_onnx = False
@@ -187,18 +187,18 @@ class KSevenDet(nn.Module):
             assert 0, 'not support now'
         elif cfg['backbone'] == 'efficientnet':
             assert 0, 'not support now'
-        elif cfg['backbone'] == 'mobilenet':
-            self.backbone = mobilenet.mobilenet_v2(feature_pyramid_level=self.feature_pyramid_levels)
+        elif cfg['backbone'] == 'mobilenetv2':
+            self.backbone = mobilenet.mobilenet_v2(backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
         elif cfg['backbone'] == 'shuflenetv2':
-            # self.backbone = shufflenetv2.shufflenet_v2_x0_5(feature_pyramid_level=self.feature_pyramid_levels)
-            self.backbone = shufflenetv2.shufflenet_v2_x1_0(feature_pyramid_level=self.feature_pyramid_levels)
+            # self.backbone = shufflenetv2.shufflenet_v2_x0_5(backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
+            self.backbone = shufflenetv2.shufflenet_v2_x1_0(backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
         elif cfg['backbone'] == 'densenet':
-            self.backbone = densenet.densenet121(feature_pyramid_level=self.feature_pyramid_levels)
+            self.backbone = densenet.densenet121(backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
         elif cfg['backbone'] == 'mnasnet':
-            # self.backbone = mnasnet.mnasnet0_5(feature_pyramid_level=self.feature_pyramid_levels)
-            self.backbone = mnasnet.mnasnet0_75(feature_pyramid_level=self.feature_pyramid_levels)
-            # self.backbone = mnasnet.mnasnet1_0(feature_pyramid_level=self.feature_pyramid_levels)
-            # self.backbone = mnasnet.mnasnet1_3(feature_pyramid_level=self.feature_pyramid_levels)
+            # self.backbone = mnasnet.mnasnet0_5(backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
+            self.backbone = mnasnet.mnasnet0_75(backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
+            # self.backbone = mnasnet.mnasnet1_0(backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
+            # self.backbone = mnasnet.mnasnet1_3(backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
         else:
             raise ValueError('Unknown backbone.')
         
@@ -209,8 +209,8 @@ class KSevenDet(nn.Module):
         # self.head = _get_head(cfg)
         if cfg['neck'] == 'fpn':
             self.neck = PyramidFeatures(*_feature_maps_channels, 
-                                        in_pyramid_levels=self.feature_pyramid_levels, 
-                                        out_pyramid_levels=self.head_pyramid_levels)
+                                        in_pyramid_levels=self.backbone_feature_pyramid_levels, 
+                                        out_pyramid_levels=self.neck_feature_pyramid_levels)
         else:
             raise ValueError('Unknown head.')
 
@@ -218,7 +218,7 @@ class KSevenDet(nn.Module):
         self.regressionModel = RegressionModel(256)
         self.classificationModel = ClassificationModel(256, num_classes=self.num_classes)
 
-        my_pyramid_levels = self.head_pyramid_levels
+        my_pyramid_levels = self.neck_feature_pyramid_levels
         # my_sizes   = [int(2 ** (x + 1) * 1.25) for x in my_pyramid_levels]
         my_sizes   = [int(2 ** (x + 2)) for x in my_pyramid_levels]
         my_ratios  = [1, 1.5, 2]

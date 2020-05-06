@@ -173,11 +173,10 @@ class MobileNetV2(nn.Module):
 
 class MobileNetV2Features(nn.Module):
     def __init__(self,
-                 num_classes=1000,
                  width_mult=1.0,
                  inverted_residual_setting=None,
                  round_nearest=8,
-                 block=None):
+                 block=None, **kwargs):
         """
         MobileNet V2 main class
 

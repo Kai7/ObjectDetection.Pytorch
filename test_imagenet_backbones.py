@@ -54,7 +54,7 @@ ksevendet_cfg = {
 # net_model = res2net.res2net50_26w_8s(features_only=True)
 # net_model = res2net.res2net50_48w_2s(features_only=True)
 # net_model = res2net.res2net101_26w_4s(features_only=True)
-# net_model = resnet.resnet18(features_only=True)
+net_model = resnet.resnet18(features_only=True)
 # net_model = resnet.resnet26(features_only=True)
 # net_model = resnet.resnet26d(features_only=True)
 # net_model = resnet.resnet34(features_only=True)

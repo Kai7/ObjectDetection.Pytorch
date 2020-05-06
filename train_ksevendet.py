@@ -5,7 +5,8 @@ import torch
 import torch.optim as optim
 from torchvision import transforms
 from architectures import retinanet, efficientdet
-from architectures import ksevendet
+# from architectures import ksevendet
+from ksevendet.architecture import ksevendet
 from architectures.backbone import shufflenetv2, densenet, mnasnet, mobilenet
 from datasettool.dataloader import KSevenDataset, CocoDataset, FLIRDataset, collater, \
                                    Resizer, AspectRatioBasedSampler, Augmenter, \
@@ -111,10 +112,18 @@ def main():
     args = get_args()
     assert args.dataset, 'dataset must provide'
 
-    # BACKBONE = 'shuflenetv2'
+    BACKBONE = 'shuflenetv2'
     # BACKBONE = 'densenet'
-    BACKBONE = 'mnasnet'
-    # BACKBONE = 'mobilenet'
+    # BACKBONE = 'mnasnet'
+    # BACKBONE = 'mobilenetv2'
+    # BACKBONE = 'resnet'
+
+    # NECK = 'fpn'
+    # NECK = 'panet-fpn'
+    NECK = 'bifpn'
+
+    # FPN_FEATURES_NUM = 256
+    FPN_FEATURES_NUM = 64
 
     support_architectures = [
         'ksevendet',
@@ -128,11 +137,12 @@ def main():
 
     if args.architecture == 'ksevendet':
         ksevendet_cfg = {
-            'backbone'      : BACKBONE,
-            'neck'          : 'fpn',
-            'num_classes'   : 2,
-            'feature_pyramid_levels' : [3, 4, 5],
-            'head_pyramid_levels'    : [3, 4, 5, 6, 7],
+            'backbone'          : BACKBONE,
+            'neck'              : NECK,
+            'fpn_features_num'  : FPN_FEATURES_NUM,
+            'num_classes'       : 2,
+            'backbone_feature_pyramid_levels' : [3, 4, 5],
+            'neck_feature_pyramid_levels'     : [3, 4, 5, 6, 7],
         }
         network_name = f'{args.architecture}-{ksevendet_cfg["backbone"]}-{ksevendet_cfg["neck"]}'
     elif args.architecture in support_architectures:
@@ -222,6 +232,7 @@ def main():
     else:
         start_epoch = 1
         print('[Info] initializing weights...')
+        # exit(0)
         init_weights(net_model)
         
     ## for EfficientDet 
@@ -375,8 +386,8 @@ def main():
 
         scheduler.step(np.mean(epoch_loss))
         print('Learning Rate:', str(scheduler._last_lr))
-        save_checkpoint(net_model, os.path.join(
-                        'saved', '{}_{}_{}.pt'.format(args.dataset, network_name, epoch_num)))
+        # save_checkpoint(net_model, os.path.join(
+        #                 'saved', '{}_{}_{}.pt'.format(args.dataset, network_name, epoch_num)))
 
     net_logger.info('Training Complete.')
 
