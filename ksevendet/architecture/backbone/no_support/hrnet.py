@@ -760,46 +760,46 @@ def _create_model(variant, pretrained, model_kwargs):
     return model
 
 
-@register_model
-def hrnet_w18_small(pretrained=True, **kwargs):
-    return _create_model('hrnet_w18_small', pretrained, kwargs)
+# @register_model
+# def hrnet_w18_small(pretrained=True, **kwargs):
+#     return _create_model('hrnet_w18_small', pretrained, kwargs)
 
 
-@register_model
-def hrnet_w18_small_v2(pretrained=True, **kwargs):
-    return _create_model('hrnet_w18_small_v2', pretrained, kwargs)
+# @register_model
+# def hrnet_w18_small_v2(pretrained=True, **kwargs):
+#     return _create_model('hrnet_w18_small_v2', pretrained, kwargs)
 
 
-@register_model
-def hrnet_w18(pretrained=True, **kwargs):
-    return _create_model('hrnet_w18', pretrained, kwargs)
+# @register_model
+# def hrnet_w18(pretrained=True, **kwargs):
+#     return _create_model('hrnet_w18', pretrained, kwargs)
 
 
-@register_model
-def hrnet_w30(pretrained=True, **kwargs):
-    return _create_model('hrnet_w30', pretrained, kwargs)
+# @register_model
+# def hrnet_w30(pretrained=True, **kwargs):
+#     return _create_model('hrnet_w30', pretrained, kwargs)
 
 
-@register_model
-def hrnet_w32(pretrained=True, **kwargs):
-    return _create_model('hrnet_w32', pretrained, kwargs)
+# @register_model
+# def hrnet_w32(pretrained=True, **kwargs):
+#     return _create_model('hrnet_w32', pretrained, kwargs)
 
 
-@register_model
-def hrnet_w40(pretrained=True, **kwargs):
-    return _create_model('hrnet_w40', pretrained, kwargs)
+# @register_model
+# def hrnet_w40(pretrained=True, **kwargs):
+#     return _create_model('hrnet_w40', pretrained, kwargs)
 
 
-@register_model
-def hrnet_w44(pretrained=True, **kwargs):
-    return _create_model('hrnet_w44', pretrained, kwargs)
+# @register_model
+# def hrnet_w44(pretrained=True, **kwargs):
+#     return _create_model('hrnet_w44', pretrained, kwargs)
 
 
-@register_model
-def hrnet_w48(pretrained=True, **kwargs):
-    return _create_model('hrnet_w48', pretrained, kwargs)
+# @register_model
+# def hrnet_w48(pretrained=True, **kwargs):
+#     return _create_model('hrnet_w48', pretrained, kwargs)
 
 
-@register_model
-def hrnet_w64(pretrained=True, **kwargs):
-    return _create_model('hrnet_w64', pretrained, kwargs)
+# @register_model
+# def hrnet_w64(pretrained=True, **kwargs):
+#     return _create_model('hrnet_w64', pretrained, kwargs)

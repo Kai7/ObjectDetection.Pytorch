@@ -67,55 +67,55 @@ def _assert_default_kwargs(kwargs):
     assert kwargs.pop('drop_rate', 0.) == 0.
 
 
-@register_model
-def inception_v3(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    # original PyTorch weights, ported from Tensorflow but modified
-    default_cfg = default_cfgs['inception_v3']
-    assert in_chans == 3
-    _assert_default_kwargs(kwargs)
-    model = Inception3(num_classes=num_classes, aux_logits=True, transform_input=False)
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    model.default_cfg = default_cfg
-    return model
+# @register_model
+# def inception_v3(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     # original PyTorch weights, ported from Tensorflow but modified
+#     default_cfg = default_cfgs['inception_v3']
+#     assert in_chans == 3
+#     _assert_default_kwargs(kwargs)
+#     model = Inception3(num_classes=num_classes, aux_logits=True, transform_input=False)
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     model.default_cfg = default_cfg
+#     return model
 
 
-@register_model
-def tf_inception_v3(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    # my port of Tensorflow SLIM weights (http://download.tensorflow.org/models/inception_v3_2016_08_28.tar.gz)
-    default_cfg = default_cfgs['tf_inception_v3']
-    assert in_chans == 3
-    _assert_default_kwargs(kwargs)
-    model = Inception3(num_classes=num_classes, aux_logits=False, transform_input=False)
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    model.default_cfg = default_cfg
-    return model
+# @register_model
+# def tf_inception_v3(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     # my port of Tensorflow SLIM weights (http://download.tensorflow.org/models/inception_v3_2016_08_28.tar.gz)
+#     default_cfg = default_cfgs['tf_inception_v3']
+#     assert in_chans == 3
+#     _assert_default_kwargs(kwargs)
+#     model = Inception3(num_classes=num_classes, aux_logits=False, transform_input=False)
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     model.default_cfg = default_cfg
+#     return model
 
 
-@register_model
-def adv_inception_v3(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    # my port of Tensorflow adversarially trained Inception V3 from
-    # http://download.tensorflow.org/models/adv_inception_v3_2017_08_18.tar.gz
-    default_cfg = default_cfgs['adv_inception_v3']
-    assert in_chans == 3
-    _assert_default_kwargs(kwargs)
-    model = Inception3(num_classes=num_classes, aux_logits=False, transform_input=False)
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    model.default_cfg = default_cfg
-    return model
+# @register_model
+# def adv_inception_v3(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     # my port of Tensorflow adversarially trained Inception V3 from
+#     # http://download.tensorflow.org/models/adv_inception_v3_2017_08_18.tar.gz
+#     default_cfg = default_cfgs['adv_inception_v3']
+#     assert in_chans == 3
+#     _assert_default_kwargs(kwargs)
+#     model = Inception3(num_classes=num_classes, aux_logits=False, transform_input=False)
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     model.default_cfg = default_cfg
+#     return model
 
 
-@register_model
-def gluon_inception_v3(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    # from gluon pretrained models, best performing in terms of accuracy/loss metrics
-    # https://gluon-cv.mxnet.io/model_zoo/classification.html
-    default_cfg = default_cfgs['gluon_inception_v3']
-    assert in_chans == 3
-    _assert_default_kwargs(kwargs)
-    model = Inception3(num_classes=num_classes, aux_logits=False, transform_input=False)
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    model.default_cfg = default_cfg
-    return model
+# @register_model
+# def gluon_inception_v3(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     # from gluon pretrained models, best performing in terms of accuracy/loss metrics
+#     # https://gluon-cv.mxnet.io/model_zoo/classification.html
+#     default_cfg = default_cfgs['gluon_inception_v3']
+#     assert in_chans == 3
+#     _assert_default_kwargs(kwargs)
+#     model = Inception3(num_classes=num_classes, aux_logits=False, transform_input=False)
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     model.default_cfg = default_cfg
+#     return model

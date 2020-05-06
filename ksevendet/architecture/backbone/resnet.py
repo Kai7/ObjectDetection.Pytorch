@@ -781,9 +781,14 @@ def resnext50_32x4d(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """Constructs a ResNeXt50-32x4d model.
     """
     default_cfg = default_cfgs['resnext50_32x4d']
-    model = ResNet(
-        Bottleneck, [3, 4, 6, 3], cardinality=32, base_width=4,
-        num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(
+            Bottleneck, [3, 4, 6, 3], cardinality=32, base_width=4,
+            in_chans=in_chans, **kwargs)
+    else:
+        model = ResNet(
+            Bottleneck, [3, 4, 6, 3], cardinality=32, base_width=4,
+            num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -795,10 +800,16 @@ def resnext50d_32x4d(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """Constructs a ResNeXt50d-32x4d model. ResNext50 w/ deep stem & avg pool downsample
     """
     default_cfg = default_cfgs['resnext50d_32x4d']
-    model = ResNet(
-        Bottleneck, [3, 4, 6, 3], cardinality=32, base_width=4,
-        stem_width=32, stem_type='deep', avg_down=True,
-        num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(
+            Bottleneck, [3, 4, 6, 3], cardinality=32, base_width=4,
+            stem_width=32, stem_type='deep', avg_down=True,
+            in_chans=in_chans, **kwargs)
+    else:
+        model = ResNet(
+            Bottleneck, [3, 4, 6, 3], cardinality=32, base_width=4,
+            stem_width=32, stem_type='deep', avg_down=True,
+            num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -810,9 +821,14 @@ def resnext101_32x4d(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """Constructs a ResNeXt-101 32x4d model.
     """
     default_cfg = default_cfgs['resnext101_32x4d']
-    model = ResNet(
-        Bottleneck, [3, 4, 23, 3], cardinality=32, base_width=4,
-        num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(
+            Bottleneck, [3, 4, 23, 3], cardinality=32, base_width=4,
+            in_chans=in_chans, **kwargs)
+    else:
+        model = ResNet(
+            Bottleneck, [3, 4, 23, 3], cardinality=32, base_width=4,
+            num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -824,9 +840,14 @@ def resnext101_32x8d(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """Constructs a ResNeXt-101 32x8d model.
     """
     default_cfg = default_cfgs['resnext101_32x8d']
-    model = ResNet(
-        Bottleneck, [3, 4, 23, 3], cardinality=32, base_width=8,
-        num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(
+            Bottleneck, [3, 4, 23, 3], cardinality=32, base_width=8,
+            in_chans=in_chans, **kwargs)
+    else:
+        model = ResNet(
+            Bottleneck, [3, 4, 23, 3], cardinality=32, base_width=8,
+            num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -838,9 +859,14 @@ def resnext101_64x4d(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """Constructs a ResNeXt101-64x4d model.
     """
     default_cfg = default_cfgs['resnext101_32x4d']
-    model = ResNet(
-        Bottleneck, [3, 4, 23, 3], cardinality=64, base_width=4,
-        num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(
+            Bottleneck, [3, 4, 23, 3], cardinality=64, base_width=4,
+            in_chans=in_chans, **kwargs)
+    else:
+        model = ResNet(
+            Bottleneck, [3, 4, 23, 3], cardinality=64, base_width=4,
+            num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -1086,9 +1112,14 @@ def seresnext26d_32x4d(pretrained=False, num_classes=1000, in_chans=3, **kwargs)
     combination of deep stem and avg_pool in downsample.
     """
     default_cfg = default_cfgs['seresnext26d_32x4d']
-    model = ResNet(
-        Bottleneck, [2, 2, 2, 2], cardinality=32, base_width=4, stem_width=32, stem_type='deep', avg_down=True,
-        num_classes=num_classes, in_chans=in_chans, block_args=dict(attn_layer='se'), **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(
+            Bottleneck, [2, 2, 2, 2], cardinality=32, base_width=4, stem_width=32, stem_type='deep', avg_down=True,
+            in_chans=in_chans, block_args=dict(attn_layer='se'), **kwargs)
+    else:
+        model = ResNet(
+            Bottleneck, [2, 2, 2, 2], cardinality=32, base_width=4, stem_width=32, stem_type='deep', avg_down=True,
+            num_classes=num_classes, in_chans=in_chans, block_args=dict(attn_layer='se'), **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -1102,10 +1133,16 @@ def seresnext26t_32x4d(pretrained=False, num_classes=1000, in_chans=3, **kwargs)
     in the deep stem.
     """
     default_cfg = default_cfgs['seresnext26t_32x4d']
-    model = ResNet(
-        Bottleneck, [2, 2, 2, 2], cardinality=32, base_width=4,
-        stem_width=32, stem_type='deep_tiered', avg_down=True,
-        num_classes=num_classes, in_chans=in_chans, block_args=dict(attn_layer='se'), **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(
+            Bottleneck, [2, 2, 2, 2], cardinality=32, base_width=4,
+            stem_width=32, stem_type='deep_tiered', avg_down=True,
+            in_chans=in_chans, block_args=dict(attn_layer='se'), **kwargs)
+    else:
+        model = ResNet(
+            Bottleneck, [2, 2, 2, 2], cardinality=32, base_width=4,
+            stem_width=32, stem_type='deep_tiered', avg_down=True,
+            num_classes=num_classes, in_chans=in_chans, block_args=dict(attn_layer='se'), **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -1119,10 +1156,16 @@ def seresnext26tn_32x4d(pretrained=False, num_classes=1000, in_chans=3, **kwargs
     in the deep stem. The channel number of the middle stem conv is narrower than the 'T' variant.
     """
     default_cfg = default_cfgs['seresnext26tn_32x4d']
-    model = ResNet(
-        Bottleneck, [2, 2, 2, 2], cardinality=32, base_width=4,
-        stem_width=32, stem_type='deep_tiered_narrow', avg_down=True,
-        num_classes=num_classes, in_chans=in_chans, block_args=dict(attn_layer='se'), **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(
+            Bottleneck, [2, 2, 2, 2], cardinality=32, base_width=4,
+            stem_width=32, stem_type='deep_tiered_narrow', avg_down=True,
+            in_chans=in_chans, block_args=dict(attn_layer='se'), **kwargs)
+    else:
+        model = ResNet(
+            Bottleneck, [2, 2, 2, 2], cardinality=32, base_width=4,
+            stem_width=32, stem_type='deep_tiered_narrow', avg_down=True,
+            num_classes=num_classes, in_chans=in_chans, block_args=dict(attn_layer='se'), **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -1138,10 +1181,16 @@ def ecaresnext26tn_32x4d(pretrained=False, num_classes=1000, in_chans=3, **kwarg
     """
     default_cfg = default_cfgs['ecaresnext26tn_32x4d']
     block_args = dict(attn_layer='eca')
-    model = ResNet(
-        Bottleneck, [2, 2, 2, 2], cardinality=32, base_width=4,
-        stem_width=32, stem_type='deep_tiered_narrow', avg_down=True,
-        num_classes=num_classes, in_chans=in_chans, block_args=block_args, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(
+            Bottleneck, [2, 2, 2, 2], cardinality=32, base_width=4,
+            stem_width=32, stem_type='deep_tiered_narrow', avg_down=True,
+            in_chans=in_chans, block_args=block_args, **kwargs)
+    else:
+        model = ResNet(
+            Bottleneck, [2, 2, 2, 2], cardinality=32, base_width=4,
+            stem_width=32, stem_type='deep_tiered_narrow', avg_down=True,
+            num_classes=num_classes, in_chans=in_chans, block_args=block_args, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -1154,8 +1203,12 @@ def ecaresnet18(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """
     default_cfg = default_cfgs['ecaresnet18']
     block_args = dict(attn_layer='eca')
-    model = ResNet(
-        BasicBlock, [2, 2, 2, 2], num_classes=num_classes, in_chans=in_chans, block_args=block_args, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(
+            BasicBlock, [2, 2, 2, 2], in_chans=in_chans, block_args=block_args, **kwargs)
+    else:
+        model = ResNet(
+            BasicBlock, [2, 2, 2, 2], num_classes=num_classes, in_chans=in_chans, block_args=block_args, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -1168,8 +1221,12 @@ def ecaresnet50(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     """
     default_cfg = default_cfgs['ecaresnet50']
     block_args = dict(attn_layer='eca')
-    model = ResNet(
-        Bottleneck, [3, 4, 6, 3], num_classes=num_classes, in_chans=in_chans, block_args=block_args, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = ResNetFeatures(
+            Bottleneck, [3, 4, 6, 3], in_chans=in_chans, block_args=block_args, **kwargs)
+    else:
+        model = ResNet(
+            Bottleneck, [3, 4, 6, 3], num_classes=num_classes, in_chans=in_chans, block_args=block_args, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)

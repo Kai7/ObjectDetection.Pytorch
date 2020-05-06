@@ -644,10 +644,16 @@ def senet154(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
 @register_model
 def seresnext26_32x4d(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     default_cfg = default_cfgs['seresnext26_32x4d']
-    model = SENet(SEResNeXtBottleneck, [2, 2, 2, 2], groups=32, reduction=16,
-                  inplanes=64, input_3x3=False,
-                  downsample_kernel_size=1, downsample_padding=0,
-                  num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = SENetFeatures(SEResNeXtBottleneck, [2, 2, 2, 2], groups=32, reduction=16,
+                              inplanes=64, input_3x3=False,
+                              downsample_kernel_size=1, downsample_padding=0,
+                              in_chans=in_chans, **kwargs)
+    else:
+        model = SENet(SEResNeXtBottleneck, [2, 2, 2, 2], groups=32, reduction=16,
+                      inplanes=64, input_3x3=False,
+                      downsample_kernel_size=1, downsample_padding=0,
+                      num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -657,10 +663,16 @@ def seresnext26_32x4d(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
 @register_model
 def seresnext50_32x4d(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     default_cfg = default_cfgs['seresnext50_32x4d']
-    model = SENet(SEResNeXtBottleneck, [3, 4, 6, 3], groups=32, reduction=16,
-                  inplanes=64, input_3x3=False,
-                  downsample_kernel_size=1, downsample_padding=0,
-                  num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = SENetFeatures(SEResNeXtBottleneck, [3, 4, 6, 3], groups=32, reduction=16,
+                              inplanes=64, input_3x3=False,
+                              downsample_kernel_size=1, downsample_padding=0,
+                              in_chans=in_chans, **kwargs)
+    else:
+        model = SENet(SEResNeXtBottleneck, [3, 4, 6, 3], groups=32, reduction=16,
+                      inplanes=64, input_3x3=False,
+                      downsample_kernel_size=1, downsample_padding=0,
+                      num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)
@@ -670,10 +682,16 @@ def seresnext50_32x4d(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
 @register_model
 def seresnext101_32x4d(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     default_cfg = default_cfgs['seresnext101_32x4d']
-    model = SENet(SEResNeXtBottleneck, [3, 4, 23, 3], groups=32, reduction=16,
-                  inplanes=64, input_3x3=False,
-                  downsample_kernel_size=1, downsample_padding=0,
-                  num_classes=num_classes, in_chans=in_chans, **kwargs)
+    if kwargs.pop('features_only', False):
+        model = SENetFeatures(SEResNeXtBottleneck, [3, 4, 23, 3], groups=32, reduction=16,
+                              inplanes=64, input_3x3=False,
+                              downsample_kernel_size=1, downsample_padding=0,
+                              in_chans=in_chans, **kwargs)
+    else:
+        model = SENet(SEResNeXtBottleneck, [3, 4, 23, 3], groups=32, reduction=16,
+                      inplanes=64, input_3x3=False,
+                      downsample_kernel_size=1, downsample_padding=0,
+                      num_classes=num_classes, in_chans=in_chans, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans)

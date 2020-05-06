@@ -292,65 +292,65 @@ class TResNet(nn.Module):
         return x
 
 
-@register_model
-def tresnet_m(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    default_cfg = default_cfgs['tresnet_m']
-    model = TResNet(layers=[3, 4, 11, 3], num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def tresnet_m(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     default_cfg = default_cfgs['tresnet_m']
+#     model = TResNet(layers=[3, 4, 11, 3], num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def tresnet_l(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    default_cfg = default_cfgs['tresnet_l']
-    model = TResNet(
-        layers=[4, 5, 18, 3], num_classes=num_classes, in_chans=in_chans, width_factor=1.2, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def tresnet_l(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     default_cfg = default_cfgs['tresnet_l']
+#     model = TResNet(
+#         layers=[4, 5, 18, 3], num_classes=num_classes, in_chans=in_chans, width_factor=1.2, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def tresnet_xl(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    default_cfg = default_cfgs['tresnet_xl']
-    model = TResNet(
-        layers=[4, 5, 24, 3], num_classes=num_classes, in_chans=in_chans, width_factor=1.3, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def tresnet_xl(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     default_cfg = default_cfgs['tresnet_xl']
+#     model = TResNet(
+#         layers=[4, 5, 24, 3], num_classes=num_classes, in_chans=in_chans, width_factor=1.3, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def tresnet_m_448(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    default_cfg = default_cfgs['tresnet_m_448']
-    model = TResNet(layers=[3, 4, 11, 3], num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def tresnet_m_448(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     default_cfg = default_cfgs['tresnet_m_448']
+#     model = TResNet(layers=[3, 4, 11, 3], num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def tresnet_l_448(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    default_cfg = default_cfgs['tresnet_l_448']
-    model = TResNet(
-        layers=[4, 5, 18, 3], num_classes=num_classes, in_chans=in_chans, width_factor=1.2, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def tresnet_l_448(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     default_cfg = default_cfgs['tresnet_l_448']
+#     model = TResNet(
+#         layers=[4, 5, 18, 3], num_classes=num_classes, in_chans=in_chans, width_factor=1.2, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def tresnet_xl_448(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    default_cfg = default_cfgs['tresnet_xl_448']
-    model = TResNet(
-        layers=[4, 5, 24, 3], num_classes=num_classes, in_chans=in_chans, width_factor=1.3, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def tresnet_xl_448(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     default_cfg = default_cfgs['tresnet_xl_448']
+#     model = TResNet(
+#         layers=[4, 5, 24, 3], num_classes=num_classes, in_chans=in_chans, width_factor=1.3, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model

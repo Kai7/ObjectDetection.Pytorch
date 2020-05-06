@@ -247,79 +247,79 @@ class DPN(nn.Module):
         return out.flatten(1)
 
 
-@register_model
-def dpn68(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    default_cfg = default_cfgs['dpn68']
-    model = DPN(
-        small=True, num_init_features=10, k_r=128, groups=32,
-        k_sec=(3, 4, 12, 3), inc_sec=(16, 32, 32, 64),
-        num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dpn68(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     default_cfg = default_cfgs['dpn68']
+#     model = DPN(
+#         small=True, num_init_features=10, k_r=128, groups=32,
+#         k_sec=(3, 4, 12, 3), inc_sec=(16, 32, 32, 64),
+#         num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dpn68b(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    default_cfg = default_cfgs['dpn68b']
-    model = DPN(
-        small=True, num_init_features=10, k_r=128, groups=32,
-        b=True, k_sec=(3, 4, 12, 3), inc_sec=(16, 32, 32, 64),
-        num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dpn68b(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     default_cfg = default_cfgs['dpn68b']
+#     model = DPN(
+#         small=True, num_init_features=10, k_r=128, groups=32,
+#         b=True, k_sec=(3, 4, 12, 3), inc_sec=(16, 32, 32, 64),
+#         num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dpn92(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    default_cfg = default_cfgs['dpn92']
-    model = DPN(
-        num_init_features=64, k_r=96, groups=32,
-        k_sec=(3, 4, 20, 3), inc_sec=(16, 32, 24, 128),
-        num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dpn92(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     default_cfg = default_cfgs['dpn92']
+#     model = DPN(
+#         num_init_features=64, k_r=96, groups=32,
+#         k_sec=(3, 4, 20, 3), inc_sec=(16, 32, 24, 128),
+#         num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dpn98(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    default_cfg = default_cfgs['dpn98']
-    model = DPN(
-        num_init_features=96, k_r=160, groups=40,
-        k_sec=(3, 6, 20, 3), inc_sec=(16, 32, 32, 128),
-        num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dpn98(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     default_cfg = default_cfgs['dpn98']
+#     model = DPN(
+#         num_init_features=96, k_r=160, groups=40,
+#         k_sec=(3, 6, 20, 3), inc_sec=(16, 32, 32, 128),
+#         num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dpn131(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    default_cfg = default_cfgs['dpn131']
-    model = DPN(
-        num_init_features=128, k_r=160, groups=40,
-        k_sec=(4, 8, 28, 3), inc_sec=(16, 32, 32, 128),
-        num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dpn131(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     default_cfg = default_cfgs['dpn131']
+#     model = DPN(
+#         num_init_features=128, k_r=160, groups=40,
+#         k_sec=(4, 8, 28, 3), inc_sec=(16, 32, 32, 128),
+#         num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dpn107(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    default_cfg = default_cfgs['dpn107']
-    model = DPN(
-        num_init_features=128, k_r=200, groups=50,
-        k_sec=(4, 8, 20, 3), inc_sec=(20, 64, 64, 128),
-        num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dpn107(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     default_cfg = default_cfgs['dpn107']
+#     model = DPN(
+#         num_init_features=128, k_r=200, groups=50,
+#         k_sec=(4, 8, 20, 3), inc_sec=(20, 64, 64, 128),
+#         num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model

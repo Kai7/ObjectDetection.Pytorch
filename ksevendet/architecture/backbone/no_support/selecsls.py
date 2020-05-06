@@ -260,36 +260,36 @@ def _create_model(variant, pretrained, model_kwargs):
     return model
 
 
-@register_model
-def selecsls42(pretrained=False, **kwargs):
-    """Constructs a SelecSLS42 model.
-    """
-    return _create_model('selecsls42', pretrained, kwargs)
+# @register_model
+# def selecsls42(pretrained=False, **kwargs):
+#     """Constructs a SelecSLS42 model.
+#     """
+#     return _create_model('selecsls42', pretrained, kwargs)
 
 
-@register_model
-def selecsls42b(pretrained=False, **kwargs):
-    """Constructs a SelecSLS42_B model.
-    """
-    return _create_model('selecsls42b', pretrained, kwargs)
+# @register_model
+# def selecsls42b(pretrained=False, **kwargs):
+#     """Constructs a SelecSLS42_B model.
+#     """
+#     return _create_model('selecsls42b', pretrained, kwargs)
 
 
-@register_model
-def selecsls60(pretrained=False, **kwargs):
-    """Constructs a SelecSLS60 model.
-    """
-    return _create_model('selecsls60', pretrained, kwargs)
+# @register_model
+# def selecsls60(pretrained=False, **kwargs):
+#     """Constructs a SelecSLS60 model.
+#     """
+#     return _create_model('selecsls60', pretrained, kwargs)
 
 
-@register_model
-def selecsls60b(pretrained=False, **kwargs):
-    """Constructs a SelecSLS60_B model.
-    """
-    return _create_model('selecsls60b', pretrained, kwargs)
+# @register_model
+# def selecsls60b(pretrained=False, **kwargs):
+#     """Constructs a SelecSLS60_B model.
+#     """
+#     return _create_model('selecsls60b', pretrained, kwargs)
 
 
-@register_model
-def selecsls84(pretrained=False, **kwargs):
-    """Constructs a SelecSLS84 model.
-    """
-    return _create_model('selecsls84', pretrained, kwargs)
+# @register_model
+# def selecsls84(pretrained=False, **kwargs):
+#     """Constructs a SelecSLS84 model.
+#     """
+#     return _create_model('selecsls84', pretrained, kwargs)

@@ -1,23 +1,27 @@
-from .inception_v4 import *
-from .inception_resnet_v2 import *
-from .densenet import *
-from .resnet import *
-from .dpn import *
-from .senet import *
-from .xception import *
+from .shufflenetv2 import *
 from .nasnet import *
 from .pnasnet import *
-from .selecsls import *
 from .efficientnet import *
 from .mobilenetv3 import *
-from .inception_v3 import *
-from .gluon_resnet import *
-from .gluon_xception import *
+from .mobilenetv2 import *
+from .resnet import *
 from .res2net import *
-from .dla import *
-from .hrnet import *
 from .sknet import *
-from .tresnet import *
+from .senet import *
+from .densenet import *
+
+### no support 
+# from .inception_v4 import *
+# from .inception_resnet_v2 import *
+# from .dpn import *
+# from .xception import *
+# from .selecsls import *
+# from .inception_v3 import *
+# from .gluon_resnet import *
+# from .gluon_xception import *
+# from .dla import *
+# from .hrnet import *
+# from .tresnet import *
 
 from .registry import *
 from .factory import create_model

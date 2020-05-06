@@ -328,30 +328,30 @@ class InceptionResnetV2(nn.Module):
         return x
 
 
-@register_model
-def inception_resnet_v2(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    r"""InceptionResnetV2 model architecture from the
-    `"InceptionV4, Inception-ResNet..." <https://arxiv.org/abs/1602.07261>` paper.
-    """
-    default_cfg = default_cfgs['inception_resnet_v2']
-    model = InceptionResnetV2(num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
+# @register_model
+# def inception_resnet_v2(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     r"""InceptionResnetV2 model architecture from the
+#     `"InceptionV4, Inception-ResNet..." <https://arxiv.org/abs/1602.07261>` paper.
+#     """
+#     default_cfg = default_cfgs['inception_resnet_v2']
+#     model = InceptionResnetV2(num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
 
-    return model
+#     return model
 
 
-@register_model
-def ens_adv_inception_resnet_v2(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    r""" Ensemble Adversarially trained InceptionResnetV2 model architecture
-    As per https://arxiv.org/abs/1705.07204 and
-    https://github.com/tensorflow/models/tree/master/research/adv_imagenet_models.
-    """
-    default_cfg = default_cfgs['ens_adv_inception_resnet_v2']
-    model = InceptionResnetV2(num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
+# @register_model
+# def ens_adv_inception_resnet_v2(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     r""" Ensemble Adversarially trained InceptionResnetV2 model architecture
+#     As per https://arxiv.org/abs/1705.07204 and
+#     https://github.com/tensorflow/models/tree/master/research/adv_imagenet_models.
+#     """
+#     default_cfg = default_cfgs['ens_adv_inception_resnet_v2']
+#     model = InceptionResnetV2(num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
 
-    return model
+#     return model

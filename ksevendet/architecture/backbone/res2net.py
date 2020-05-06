@@ -175,7 +175,7 @@ def res2net50_26w_6s(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     res2net_block_args = dict(scale=6)
     if kwargs.pop('features_only', False):
         model = ResNetFeatures(Bottle2neck, [3, 4, 6, 3], base_width=26,
-                                in_chans=in_chans, block_args=res2net_block_args, **kwargs)
+                               in_chans=in_chans, block_args=res2net_block_args, **kwargs)
     else:
         model = ResNet(Bottle2neck, [3, 4, 6, 3], base_width=26,
                        num_classes=num_classes, in_chans=in_chans, block_args=res2net_block_args, **kwargs)

@@ -444,26 +444,26 @@ class Xception71(nn.Module):
         return x
 
 
-@register_model
-def gluon_xception65(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    """ Modified Aligned Xception-65
-    """
-    default_cfg = default_cfgs['gluon_xception65']
-    model = Xception65(num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def gluon_xception65(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     """ Modified Aligned Xception-65
+#     """
+#     default_cfg = default_cfgs['gluon_xception65']
+#     model = Xception65(num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def gluon_xception71(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    """ Modified Aligned Xception-71
-    """
-    default_cfg = default_cfgs['gluon_xception71']
-    model = Xception71(num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def gluon_xception71(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     """ Modified Aligned Xception-71
+#     """
+#     default_cfg = default_cfgs['gluon_xception71']
+#     model = Xception71(num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 

@@ -329,141 +329,141 @@ class DLA(nn.Module):
         return x.flatten(1)
 
 
-@register_model
-def dla60_res2net(pretrained=None, num_classes=1000, in_chans=3, **kwargs):
-    default_cfg = default_cfgs['dla60_res2net']
-    model = DLA(levels=(1, 1, 1, 2, 3, 1), channels=(16, 32, 128, 256, 512, 1024),
-                block=DlaBottle2neck, cardinality=1, base_width=28,
-                num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dla60_res2net(pretrained=None, num_classes=1000, in_chans=3, **kwargs):
+#     default_cfg = default_cfgs['dla60_res2net']
+#     model = DLA(levels=(1, 1, 1, 2, 3, 1), channels=(16, 32, 128, 256, 512, 1024),
+#                 block=DlaBottle2neck, cardinality=1, base_width=28,
+#                 num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dla60_res2next(pretrained=None, num_classes=1000, in_chans=3, **kwargs):
-    default_cfg = default_cfgs['dla60_res2next']
-    model = DLA(levels=(1, 1, 1, 2, 3, 1), channels=(16, 32, 128, 256, 512, 1024),
-                block=DlaBottle2neck, cardinality=8, base_width=4,
-                num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dla60_res2next(pretrained=None, num_classes=1000, in_chans=3, **kwargs):
+#     default_cfg = default_cfgs['dla60_res2next']
+#     model = DLA(levels=(1, 1, 1, 2, 3, 1), channels=(16, 32, 128, 256, 512, 1024),
+#                 block=DlaBottle2neck, cardinality=8, base_width=4,
+#                 num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dla34(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-34
-    default_cfg = default_cfgs['dla34']
-    model = DLA([1, 1, 1, 2, 2, 1], [16, 32, 64, 128, 256, 512], block=DlaBasic, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dla34(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-34
+#     default_cfg = default_cfgs['dla34']
+#     model = DLA([1, 1, 1, 2, 2, 1], [16, 32, 64, 128, 256, 512], block=DlaBasic, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dla46_c(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-46-C
-    default_cfg = default_cfgs['dla46_c']
-    model = DLA(levels=[1, 1, 1, 2, 2, 1], channels=[16, 32, 64, 64, 128, 256],
-                block=DlaBottleneck, num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dla46_c(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-46-C
+#     default_cfg = default_cfgs['dla46_c']
+#     model = DLA(levels=[1, 1, 1, 2, 2, 1], channels=[16, 32, 64, 64, 128, 256],
+#                 block=DlaBottleneck, num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dla46x_c(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-X-46-C
-    default_cfg = default_cfgs['dla46x_c']
-    model = DLA(levels=[1, 1, 1, 2, 2, 1], channels=[16, 32, 64, 64, 128, 256],
-                block=DlaBottleneck, cardinality=32, base_width=4,
-                num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dla46x_c(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-X-46-C
+#     default_cfg = default_cfgs['dla46x_c']
+#     model = DLA(levels=[1, 1, 1, 2, 2, 1], channels=[16, 32, 64, 64, 128, 256],
+#                 block=DlaBottleneck, cardinality=32, base_width=4,
+#                 num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dla60x_c(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-X-60-C
-    default_cfg = default_cfgs['dla60x_c']
-    model = DLA([1, 1, 1, 2, 3, 1], [16, 32, 64, 64, 128, 256],
-                block=DlaBottleneck, cardinality=32, base_width=4,
-                num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dla60x_c(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-X-60-C
+#     default_cfg = default_cfgs['dla60x_c']
+#     model = DLA([1, 1, 1, 2, 3, 1], [16, 32, 64, 64, 128, 256],
+#                 block=DlaBottleneck, cardinality=32, base_width=4,
+#                 num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dla60(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-60
-    default_cfg = default_cfgs['dla60']
-    model = DLA([1, 1, 1, 2, 3, 1], [16, 32, 128, 256, 512, 1024],
-                block=DlaBottleneck, num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dla60(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-60
+#     default_cfg = default_cfgs['dla60']
+#     model = DLA([1, 1, 1, 2, 3, 1], [16, 32, 128, 256, 512, 1024],
+#                 block=DlaBottleneck, num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dla60x(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-X-60
-    default_cfg = default_cfgs['dla60x']
-    model = DLA([1, 1, 1, 2, 3, 1], [16, 32, 128, 256, 512, 1024],
-                block=DlaBottleneck, cardinality=32, base_width=4,
-                num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dla60x(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-X-60
+#     default_cfg = default_cfgs['dla60x']
+#     model = DLA([1, 1, 1, 2, 3, 1], [16, 32, 128, 256, 512, 1024],
+#                 block=DlaBottleneck, cardinality=32, base_width=4,
+#                 num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dla102(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-102
-    default_cfg = default_cfgs['dla102']
-    model = DLA([1, 1, 1, 3, 4, 1], [16, 32, 128, 256, 512, 1024],
-                block=DlaBottleneck, residual_root=True,
-                num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dla102(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-102
+#     default_cfg = default_cfgs['dla102']
+#     model = DLA([1, 1, 1, 3, 4, 1], [16, 32, 128, 256, 512, 1024],
+#                 block=DlaBottleneck, residual_root=True,
+#                 num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dla102x(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-X-102
-    default_cfg = default_cfgs['dla102x']
-    model = DLA([1, 1, 1, 3, 4, 1], [16, 32, 128, 256, 512, 1024],
-                block=DlaBottleneck, cardinality=32, base_width=4, residual_root=True,
-                num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dla102x(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-X-102
+#     default_cfg = default_cfgs['dla102x']
+#     model = DLA([1, 1, 1, 3, 4, 1], [16, 32, 128, 256, 512, 1024],
+#                 block=DlaBottleneck, cardinality=32, base_width=4, residual_root=True,
+#                 num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dla102x2(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-X-102 64
-    default_cfg = default_cfgs['dla102x2']
-    model = DLA([1, 1, 1, 3, 4, 1], [16, 32, 128, 256, 512, 1024],
-                block=DlaBottleneck, cardinality=64, base_width=4, residual_root=True,
-                num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dla102x2(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-X-102 64
+#     default_cfg = default_cfgs['dla102x2']
+#     model = DLA([1, 1, 1, 3, 4, 1], [16, 32, 128, 256, 512, 1024],
+#                 block=DlaBottleneck, cardinality=64, base_width=4, residual_root=True,
+#                 num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
-@register_model
-def dla169(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-169
-    default_cfg = default_cfgs['dla169']
-    model = DLA([1, 1, 2, 3, 5, 1], [16, 32, 128, 256, 512, 1024],
-                block=DlaBottleneck, residual_root=True,
-                num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def dla169(pretrained=None, num_classes=1000, in_chans=3, **kwargs):  # DLA-169
+#     default_cfg = default_cfgs['dla169']
+#     model = DLA([1, 1, 2, 3, 5, 1], [16, 32, 128, 256, 512, 1024],
+#                 block=DlaBottleneck, residual_root=True,
+#                 num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model

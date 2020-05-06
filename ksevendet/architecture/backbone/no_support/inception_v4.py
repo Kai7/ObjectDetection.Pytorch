@@ -296,14 +296,14 @@ class InceptionV4(nn.Module):
         return x
 
 
-@register_model
-def inception_v4(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    default_cfg = default_cfgs['inception_v4']
-    model = InceptionV4(num_classes=num_classes, in_chans=in_chans, **kwargs)
-    model.default_cfg = default_cfg
-    if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans)
-    return model
+# @register_model
+# def inception_v4(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+#     default_cfg = default_cfgs['inception_v4']
+#     model = InceptionV4(num_classes=num_classes, in_chans=in_chans, **kwargs)
+#     model.default_cfg = default_cfg
+#     if pretrained:
+#         load_pretrained(model, default_cfg, num_classes, in_chans)
+#     return model
 
 
 
