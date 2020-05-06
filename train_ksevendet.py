@@ -7,7 +7,8 @@ from torchvision import transforms
 from architectures import retinanet, efficientdet
 # from architectures import ksevendet
 from ksevendet.architecture import ksevendet
-from architectures.backbone import shufflenetv2, densenet, mnasnet, mobilenet
+import ksevendet.architecture.backbone.registry as registry
+# from architectures.backbone import shufflenetv2, densenet, mnasnet, mobilenet
 from datasettool.dataloader import KSevenDataset, CocoDataset, FLIRDataset, collater, \
                                    Resizer, AspectRatioBasedSampler, Augmenter, \
                                    Normalizer
@@ -108,15 +109,21 @@ def test(dataset, model, epoch, args, logger=None):
         else:
             print('ERROR: Unknow dataset.')
 
+
 def main():
     args = get_args()
     assert args.dataset, 'dataset must provide'
+    # pdb.set_trace()
+    default_support_backbones = registry._module_to_models
 
-    BACKBONE = 'shuflenetv2'
-    # BACKBONE = 'densenet'
+    # write_support_backbones(default_support_backbones)
+
+    # BACKBONE = 'shuflenetv2'
+    BACKBONE = 'densenet'
     # BACKBONE = 'mnasnet'
     # BACKBONE = 'mobilenetv2'
     # BACKBONE = 'resnet'
+    # BACKBONE = 'res2net'
 
     # NECK = 'fpn'
     # NECK = 'panet-fpn'
@@ -407,6 +414,23 @@ def save_checkpoint(model, save_path):
         print('model is Not DataParallel')
         torch.save(model.state_dict(), save_path)
 
+
+def write_support_backbones(support_backbones):
+    import json
+    print('KSevenDet default models')
+    support_backbone_arch = list(support_backbones.keys())
+    support_backbone_arch.sort()
+    for k in support_backbone_arch:
+        print(f'  Backbone {k}')
+        support_variant = list(support_backbones[k])
+        support_variant.sort()
+        support_backbones[k] = support_variant
+        for m in support_variant:
+            print(f'    {m}')
+    save_path = os.path.join('support_backbones.json')
+    with open(save_path, 'w') as outfile:
+        json.dump(support_backbones, outfile, indent=4)
+    print('done')
 
 if __name__ == '__main__':
     main()

@@ -1,12 +1,11 @@
 import torch.nn as nn
 import torch
 import math
-import torch.utils.model_zoo as model_zoo
 from torchvision.ops import nms
-from architectures.utils import BBoxTransform, ClipBoxes
-from architectures.utils_resnet import BasicBlock, Bottleneck
-from architectures.anchors import Anchors
-from architectures import losses
+
+from ksevendet.architecture.utils import BBoxTransform, ClipBoxes
+from ksevendet.architecture.anchors import Anchors
+from ksevendet.architecture.losses import FocalLoss
 
 # from architectures.backbone import shufflenetv2, densenet, mnasnet, mobilenet
 from ksevendet.architecture.backbone import shufflenetv2, mobilenetv2, mobilenetv3, efficientnet, resnet, densenet, res2net, senet, sknet
@@ -36,27 +35,27 @@ class KSevenDet(nn.Module):
             self.backbone = resnet.resnet18(**backbone_build_info)
             # self.backbone = resnet.resnet34(**backbone_build_info)
         elif cfg['backbone'] == 'res2net':
-            self.backbone = res2net.res2net50_14w_8s(**backbone_build_info)
+            # self.backbone = res2net.res2net50_14w_8s(**backbone_build_info)
             # self.backbone = res2net.res2net50_26w_4s(**backbone_build_info)
             # self.backbone = res2net.res2net50_26w_6s(**backbone_build_info)
             # self.backbone = res2net.res2net50_26w_8s(**backbone_build_info)
             # self.backbone = res2net.res2net50_48w_2s(**backbone_build_info)
             # self.backbone = res2net.res2net101_26w_4s(**backbone_build_info)
-            # self.backbone = res2net.res2next50(**backbone_build_info)
+            self.backbone = res2net.res2next50(**backbone_build_info)
         elif cfg['backbone'] == 'efficientnet':
             assert 0, 'not support now'
         elif cfg['backbone'] == 'mobilenetv2':
-            self.backbone = mobilenetv2.mobilenet_v2(features_only=True, backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
+            self.backbone = mobilenetv2.mobilenetv2(**backbone_build_info)
         elif cfg['backbone'] == 'shuflenetv2':
-            # self.backbone = shufflenetv2.shufflenet_v2_x0_5(features_only=True, backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
-            self.backbone = shufflenetv2.shufflenet_v2_x1_0(features_only=True, backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
+            # self.backbone = shufflenetv2.shufflenetv2_x0_5(f**backbone_build_info)
+            self.backbone = shufflenetv2.shufflenetv2_x1_0(**backbone_build_info)
         elif cfg['backbone'] == 'densenet':
-            self.backbone = densenet.densenet121(backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
+            self.backbone = densenet.densenet121(**backbone_build_info)
         elif cfg['backbone'] == 'mnasnet':
-            # self.backbone = mnasnet.mnasnet0_5(backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
-            self.backbone = mnasnet.mnasnet0_75(backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
-            # self.backbone = mnasnet.mnasnet1_0(backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
-            # self.backbone = mnasnet.mnasnet1_3(backbone_feature_pyramid_level=self.backbone_feature_pyramid_levels)
+            # self.backbone = mnasnet.mnasnet0_5(**backbone_build_info)
+            # self.backbone = mnasnet.mnasnet0_75(**backbone_build_info)
+            self.backbone = mnasnet.mnasnet1_0(**backbone_build_info)
+            # self.backbone = mnasnet.mnasnet1_3(**backbone_build_info)
         else:
             raise ValueError('Unknown backbone.')
         
@@ -126,7 +125,7 @@ class KSevenDet(nn.Module):
         # my_negative_threshold = 0.35
         # self.focalLoss = losses.FocalLoss(positive_threshold=my_positive_threshold, 
         #                                   negative_threshold=my_negative_threshold)
-        self.focalLoss = losses.FocalLoss()
+        self.focalLoss = FocalLoss()
 
         # for m in self.modules():
         #     if isinstance(m, nn.Conv2d):

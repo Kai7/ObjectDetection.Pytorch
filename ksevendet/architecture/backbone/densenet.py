@@ -158,7 +158,8 @@ class DenseNetFeatures(nn.Module):
     """
     def __init__(self, growth_rate=32, block_config=(6, 12, 24, 16),
                  num_init_features=64, bn_size=4, drop_rate=0,
-                 in_chans=3):
+                 in_chans=3, 
+                 **kwargs):
         self.drop_rate = drop_rate
         super(DenseNetFeatures, self).__init__()
         self.features_num = dict()

@@ -9,7 +9,7 @@ from .registry import register_model
 from .helpers import load_pretrained
 
 
-__all__ = ['MobileNetV2', 'MobileNetV2Features', 'mobilenet_v2']
+__all__ = ['MobileNetV2', 'MobileNetV2Features', 'mobilenetv2']
 
 def _cfg(url=''):
     return {
@@ -18,7 +18,7 @@ def _cfg(url=''):
 
 
 default_cfgs = {
-    'mobilenet_v2': _cfg(url='https://download.pytorch.org/models/mobilenet_v2-b0353104.pth'),
+    'mobilenetv2': _cfg(url='https://download.pytorch.org/models/mobilenet_v2-b0353104.pth'),
 }
 
 
@@ -290,7 +290,7 @@ class MobileNetV2Features(nn.Module):
 #     return model
 
 @register_model
-def mobilenet_v2(pretrained=False, progress=True, **kwargs):
+def mobilenetv2(pretrained=False, progress=True, **kwargs):
     """
     Constructs a MobileNetV2 architecture from
     `"MobileNetV2: Inverted Residuals and Linear Bottlenecks" <https://arxiv.org/abs/1801.04381>`_.
@@ -299,7 +299,7 @@ def mobilenet_v2(pretrained=False, progress=True, **kwargs):
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    default_cfg = default_cfgs['mobilenet_v2']
+    default_cfg = default_cfgs['mobilenetv2']
     if kwargs.pop('features_only', False):
         model = MobileNetV2Features(**kwargs)
     else:
