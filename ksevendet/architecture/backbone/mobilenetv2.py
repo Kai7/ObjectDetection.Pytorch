@@ -9,7 +9,7 @@ from .registry import register_model
 from .helpers import load_pretrained
 
 
-__all__ = ['MobileNetV2', 'MobileNetV2Features', 'mobilenetv2']
+__all__ = ['MobileNetV2', 'MobileNetV2Features', 'mobilenetv2_torchvision']
 
 def _cfg(url=''):
     return {
@@ -229,7 +229,7 @@ class MobileNetV2Features(nn.Module):
                 input_channel = output_channel
             self.feature_blocks.append(nn.Sequential(*_blocks))
         # building last several layers
-        self.final_conv = ConvBNReLU(input_channel, self.last_channel, kernel_size=1)
+        # self.final_conv = ConvBNReLU(input_channel, self.last_channel, kernel_size=1)
 
         _feature_map_channels = [32, 96, 320]
         self.features_num = dict()
@@ -255,19 +255,19 @@ class MobileNetV2Features(nn.Module):
                 nn.init.zeros_(m.bias)
 
     def forward(self, x):
-        print(f'Input Shape : {str(x.shape)}')
+        # print(f'Input Shape : {str(x.shape)}')
         x_feature = self.stem(x)
-        print(f'x_stem Shape : {str(x.shape)}')
+        # print(f'x_stem Shape : {str(x.shape)}')
         RETURN_IDXES = [2, 4, 6]
 
         feature_maps = list()
         for i, _block in enumerate(self.feature_blocks):
             x_feature = _block(x_feature)
-            print(f'Block_{i} Shape : {str(x_feature.shape)}')
+            # print(f'Block_{i} Shape : {str(x_feature.shape)}')
             if i in RETURN_IDXES:
                 feature_maps.append(x_feature)
-        x_feature = self.final_conv(x_feature)
-        print(f'x_final Shape : {str(x_feature.shape)}')
+        # x_feature = self.final_conv(x_feature)
+        # print(f'x_final Shape : {str(x_feature.shape)}')
 
         return feature_maps
 
@@ -290,7 +290,7 @@ class MobileNetV2Features(nn.Module):
 #     return model
 
 @register_model
-def mobilenetv2(pretrained=False, progress=True, **kwargs):
+def mobilenetv2_torchvision(pretrained=False, progress=True, **kwargs):
     """
     Constructs a MobileNetV2 architecture from
     `"MobileNetV2: Inverted Residuals and Linear Bottlenecks" <https://arxiv.org/abs/1801.04381>`_.
@@ -307,4 +307,39 @@ def mobilenetv2(pretrained=False, progress=True, **kwargs):
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans, filter_fn=_filter_pretrained)
+    return model
+
+
+# ---------------------------------------------------------------------------- #
+# Build function from efficientnet.py
+# ---------------------------------------------------------------------------- #
+from .efficientnet import _gen_mobilenet_v2
+
+@register_model
+def mobilenetv2_100(pretrained=False, **kwargs):
+    """ MobileNet V2 w/ 1.0 channel multiplier """
+    model = _gen_mobilenet_v2('mobilenetv2_100', 1.0, pretrained=pretrained, **kwargs)
+    return model
+
+
+@register_model
+def mobilenetv2_140(pretrained=False, **kwargs):
+    """ MobileNet V2 w/ 1.4 channel multiplier """
+    model = _gen_mobilenet_v2('mobilenetv2_140', 1.4, pretrained=pretrained, **kwargs)
+    return model
+
+
+@register_model
+def mobilenetv2_110d(pretrained=False, **kwargs):
+    """ MobileNet V2 w/ 1.1 channel, 1.2 depth multipliers"""
+    model = _gen_mobilenet_v2(
+        'mobilenetv2_110d', 1.1, depth_multiplier=1.2, fix_stem_head=True, pretrained=pretrained, **kwargs)
+    return model
+
+
+@register_model
+def mobilenetv2_120d(pretrained=False, **kwargs):
+    """ MobileNet V2 w/ 1.2 channel, 1.4 depth multipliers """
+    model = _gen_mobilenet_v2(
+        'mobilenetv2_120d', 1.2, depth_multiplier=1.4, fix_stem_head=True, pretrained=pretrained, **kwargs)
     return model

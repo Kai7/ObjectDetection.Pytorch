@@ -12,99 +12,79 @@ from ksevendet.architecture.backbone import shufflenetv2, mobilenetv2, mobilenet
 from ksevendet.architecture.neck import FPN, PANetFPN, BiFPN
 from ksevendet.architecture.head import RegressorV1, RegressorV2, ClassifierV1, ClassifierV2
 
+import ksevendet.architecture.backbone.registry as registry
+
 import pdb
 
 class KSevenDet(nn.Module):
-    def __init__(self, cfg, iou_threshold=0.5, **kwargs):
+    def __init__(self, cfg, num_classes=80, iou_threshold=0.5, **kwargs):
         super(KSevenDet, self).__init__()
+        logger = kwargs.get('logger', None)
         # self.backbone = _get_backbone(cfg)
-        self.num_classes = cfg['num_classes']
+        self.num_classes = num_classes
         self.backbone_feature_pyramid_levels = cfg['backbone_feature_pyramid_levels']
         self.neck_feature_pyramid_levels     = cfg['neck_feature_pyramid_levels']
         self.iou_threshold = iou_threshold
 
         self.convert_onnx = False
 
-        logger = kwargs.get('logger', None)
-
-        backbone_build_info = {
-            'features_only': True, 
-            'backbone_feature_pyramid_level': self.backbone_feature_pyramid_levels
-        }
-        if cfg['backbone'] == 'resnet':
-            self.backbone = resnet.resnet18(**backbone_build_info)
-            # self.backbone = resnet.resnet34(**backbone_build_info)
-        elif cfg['backbone'] == 'res2net':
-            # self.backbone = res2net.res2net50_14w_8s(**backbone_build_info)
-            # self.backbone = res2net.res2net50_26w_4s(**backbone_build_info)
-            # self.backbone = res2net.res2net50_26w_6s(**backbone_build_info)
-            # self.backbone = res2net.res2net50_26w_8s(**backbone_build_info)
-            # self.backbone = res2net.res2net50_48w_2s(**backbone_build_info)
-            # self.backbone = res2net.res2net101_26w_4s(**backbone_build_info)
-            self.backbone = res2net.res2next50(**backbone_build_info)
-        elif cfg['backbone'] == 'efficientnet':
-            assert 0, 'not support now'
-        elif cfg['backbone'] == 'mobilenetv2':
-            self.backbone = mobilenetv2.mobilenetv2(**backbone_build_info)
-        elif cfg['backbone'] == 'shuflenetv2':
-            # self.backbone = shufflenetv2.shufflenetv2_x0_5(f**backbone_build_info)
-            self.backbone = shufflenetv2.shufflenetv2_x1_0(**backbone_build_info)
-        elif cfg['backbone'] == 'densenet':
-            self.backbone = densenet.densenet121(**backbone_build_info)
-        elif cfg['backbone'] == 'mnasnet':
-            # self.backbone = mnasnet.mnasnet0_5(**backbone_build_info)
-            # self.backbone = mnasnet.mnasnet0_75(**backbone_build_info)
-            self.backbone = mnasnet.mnasnet1_0(**backbone_build_info)
-            # self.backbone = mnasnet.mnasnet1_3(**backbone_build_info)
-        else:
-            raise ValueError('Unknown backbone.')
+        self.backbone = self._build_backbone(cfg, logger=logger)
         
         _feature_channels = self.backbone.feature_channels()
         if logger:
             logger.info(f'Backbone Features Num : {str(_feature_channels)}')
         
         # my_pyramid_levels = [3, 4, 5, 6, 7]
-        # self.head = _get_head(cfg)
-        fpn_features_num = cfg.get('fpn_features_num', 256)
+        # self.head = self._build_head(cfg)
+        # fpn_features_num = cfg.get('fpn_features_num', 256)
+        fpn_features_num = cfg['fpn_features_num']
         if logger:
             logger.info(f'FPN Features Num : {fpn_features_num}')
         
         if cfg['neck'] == 'fpn':
             # self.neck = FPN(*_feature_channels, 
-            #                in_pyramid_levels=self.backbone_feature_pyramid_levels, 
-            #                out_pyramid_levels=self.neck_feature_pyramid_levels)
+            #                 in_pyramid_levels=self.backbone_feature_pyramid_levels, 
+            #                 out_pyramid_levels=self.neck_feature_pyramid_levels)
             self.neck = PANetFPN(_feature_channels, 
                                  in_pyramid_levels=self.backbone_feature_pyramid_levels, 
                                  out_pyramid_levels=self.neck_feature_pyramid_levels,
-                                 features_num=fpn_features_num)
+                                 features_num=fpn_features_num,
+                                 logger=logger)
         elif cfg['neck'] == 'panet-fpn':
             self.neck = PANetFPN(_feature_channels, 
                                  in_pyramid_levels=self.backbone_feature_pyramid_levels, 
                                  out_pyramid_levels=self.neck_feature_pyramid_levels,
                                  features_num=fpn_features_num,
-                                 panet_buttomup=True)
+                                 panet_buttomup=True,
+                                 logger=logger)
         elif cfg['neck'] == 'bifpn':
-            bifpn_repeats = cfg.get('bifpn_repeats', 2)
-            bifpn_attention = cfg.get('bifpn_attention', False)
+            # bifpn_repeats = cfg.get('bifpn_repeats', 2)
+            # bifpn_attention = cfg.get('bifpn_attention', False)
+            bifpn_repeats = cfg['neck_config']['bifpn_repeats']
+            bifpn_attention = cfg['neck_config']['bifpn_attention']
+            if logger:
+                logger.info(f'BiFPN Repeats: {bifpn_repeats}')
             _bifpn_modules = [BiFPN(_feature_channels, 
                                     in_pyramid_levels=self.backbone_feature_pyramid_levels, 
                                     out_pyramid_levels=self.neck_feature_pyramid_levels,
                                     features_num=fpn_features_num,
                                     first_time=True if _ == 0 else False,
-                                    attention=bifpn_attention)
+                                    attention=bifpn_attention,
+                                    logger=logger)
                                     for _ in range(bifpn_repeats)]
             self.neck = nn.Sequential(*_bifpn_modules)
         else:
-            print(cfg["neck"])
             raise ValueError(f'Unknown neck {cfg["neck"]}')
 
-
-        self.head_version = 1
-        self.regressor = RegressorV1(fpn_features_num)
-        self.classifier = ClassifierV1(fpn_features_num, num_classes=self.num_classes)
-        # self.head_version = 2
-        # self.regressor = RegressorV2(fpn_features_num)
-        # self.classifier = ClassifierV2(fpn_features_num, num_classes=self.num_classes)
+        HEAD_VERSION = 2
+        if HEAD_VERSION == 1:
+            self.head_version = 1
+            self.regressor = RegressorV1(fpn_features_num)
+            self.classifier = ClassifierV1(fpn_features_num, num_classes=self.num_classes)
+        else:
+            self.head_version = 2
+            self.regressor = RegressorV2(fpn_features_num)
+            self.classifier = ClassifierV2(fpn_features_num, num_classes=self.num_classes)
 
         my_pyramid_levels = self.neck_feature_pyramid_levels
         # my_sizes   = [int(2 ** (x + 1) * 1.25) for x in my_pyramid_levels]
@@ -138,21 +118,60 @@ class KSevenDet(nn.Module):
 
         self.freeze_bn()
 
-    def _make_layer(self, block, planes, blocks, stride=1):
-        downsample = None
-        if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion,
-                          kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(planes * block.expansion),
-            )
+    def _build_backbone(self, cfg, **kwargs):
+        logger = kwargs.get('logger', None)
+        # print(registry._model_to_module.keys())
+        assert cfg['backbone'] in registry._module_to_models, f'Backbone: {cfg["backbone"]} not support.'
 
-        layers = [block(self.inplanes, planes, stride, downsample)]
-        self.inplanes = planes * block.expansion
-        for i in range(1, blocks):
-            layers.append(block(self.inplanes, planes))
+        backbone_build_info = {
+            'features_only': True, 
+            'backbone_feature_pyramid_level': self.backbone_feature_pyramid_levels
+        }
+        if cfg.get('variant', None):
+            assert registry.is_model(cfg['variant']), f'Variant: {cfg["variant"]} not support.'
+            build_fn = registry.model_entrypoint(cfg['variant'])
+            if logger:
+                logger.info(f'Use default variant: {build_fn}')
+            return build_fn(**backbone_build_info)
+        else:
+            assert cfg.get('backbone_config')
 
-        return nn.Sequential(*layers)
+            print('Not support now.')
+            exit(0)
+
+        # if cfg['backbone'] == 'resnet':
+        #     self.backbone = resnet.resnet18(**backbone_build_info)
+        #     self.backbone = resnet.resnet34(**backbone_build_info)
+        # elif cfg['backbone'] == 'res2net':
+        #     self.backbone = res2net.res2net50_14w_8s(**backbone_build_info)
+        #     self.backbone = res2net.res2net50_26w_4s(**backbone_build_info)
+        #     self.backbone = res2net.res2net50_26w_6s(**backbone_build_info)
+        #     self.backbone = res2net.res2net50_26w_8s(**backbone_build_info)
+        #     self.backbone = res2net.res2net50_48w_2s(**backbone_build_info)
+        #     self.backbone = res2net.res2net101_26w_4s(**backbone_build_info)
+        #     self.backbone = res2net.res2next50(**backbone_build_info)
+        # if cfg['backbone'] == 'sknet':
+        #     self.backbone = sknet.skresnet18(**backbone_build_info)
+        #     self.backbone = sknet.skresnet34(**backbone_build_info)
+        #     self.backbone = sknet.skresnet50(**backbone_build_info)
+        #     self.backbone = sknet.skresnet50d(**backbone_build_info)
+        # elif cfg['backbone'] == 'efficientnet':
+        #     assert 0, 'not support now'
+        # elif cfg['backbone'] == 'mobilenetv2':
+        #     self.backbone = mobilenetv2.mobilenetv2(**backbone_build_info)
+        # elif cfg['backbone'] == 'shufflenetv2':
+        #     self.backbone = shufflenetv2.shufflenetv2_x0_5(f**backbone_build_info)
+        #     self.backbone = shufflenetv2.shufflenetv2_x1_0(**backbone_build_info)
+        # elif cfg['backbone'] == 'densenet':
+        #     self.backbone = densenet.densenet121(**backbone_build_info)
+        # elif cfg['backbone'] == 'mnasnet':
+        #     self.backbone = mnasnet.mnasnet0_5(**backbone_build_info)
+        #     self.backbone = mnasnet.mnasnet0_75(**backbone_build_info)
+        #     self.backbone = mnasnet.mnasnet1_0(**backbone_build_info)
+        #     self.backbone = mnasnet.mnasnet1_3(**backbone_build_info)
+        # else:
+        #     raise ValueError('Unknown backbone.')
+
 
     def freeze_bn(self):
         '''Freeze BatchNorm layers.'''

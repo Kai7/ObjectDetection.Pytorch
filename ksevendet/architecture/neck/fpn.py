@@ -96,11 +96,15 @@ class PANetFPN(nn.Module):
     # def __init__(self, fpn_level_info, P2only=False, panet_buttomup=False):
         super().__init__()
         self.panet_buttomup = panet_buttomup
-
         self.features_num = features_num
         self.in_pyramid_levels = in_pyramid_levels      # [3, 4, 5]
         self.out_pyramid_levels = out_pyramid_levels    # [3, 4, 5, 6, 7]
         self.backbone_features_num = backbone_features_num[::-1]
+
+        logger = kwargs.get('logger', None)
+        if logger:
+            logger.info('Build Neck: {}'.format('FPN' if not panet_buttomup else 'PANet-FPN'))
+            logger.info(f'FPN Features: {features_num}')
 
         # self.dim_out = fpn_dim = cfg.FPN.DIM
         # min_level, max_level = get_min_max_levels()

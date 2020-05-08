@@ -13,6 +13,7 @@ class BiFPN(nn.Module):
     """
     modified by Zylo117
     """
+    # TODO: Support specific in_pyramid_levels and out_pyramid_levels 
 
     # def __init__(self, num_channels, conv_channels, first_time=False, epsilon=1e-4, onnx_export=False, attention=True):
     def __init__(self, backbone_features_num, in_pyramid_levels=[3,4,5], out_pyramid_levels=[3,4,5,6,7], features_num=64, 
@@ -36,6 +37,14 @@ class BiFPN(nn.Module):
         self.features_num = features_num
         self.epsilon = epsilon
         self.attention = attention
+
+        logger = kwargs.get('logger', None)
+        if logger:
+            logger.info('Build Neck: BiFPN')
+            logger.info(f'FPN Features: {features_num}')
+            logger.info(f'First: {first_time}')
+            logger.info(f'Attention: {attention}')
+
         # Conv layers
         self.conv3_up = SeparableConvBlock(features_num, onnx_export=onnx_export)
         self.conv4_up = SeparableConvBlock(features_num, onnx_export=onnx_export)

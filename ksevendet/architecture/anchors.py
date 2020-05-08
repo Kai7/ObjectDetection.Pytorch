@@ -22,7 +22,14 @@ class Anchors(nn.Module):
             kwargs['logger'].info('Anchors Ratios  : {}'.format(str(self.ratios)))
             for idx in range(len(self.sizes)):
                 anchors = generate_anchors(base_size=self.sizes[idx], ratios=self.ratios, scales=self.scales, get_sample=True)
-                anchors_info = '\n'.join(['({:>4},{:>4})'.format(int(anchors[i,2]), int(anchors[i,3])) for i in range(len(anchors))])
+                anchors_info = list()
+                ratio_nums_ = len(self.ratios)
+                scale_nums_ = len(self.scales)
+                for i_ratio in range(ratio_nums_):
+                    anchors_info.append(' '.join(['({:>4},{:>4})'.format(
+                                        int(anchors[i_ratio*scale_nums_ + j_scale,2]), int(anchors[i_ratio*scale_nums_ + j_scale,3])) 
+                                        for j_scale in range(scale_nums_)]))
+                anchors_info = '\n'.join(anchors_info)
                 #kwargs['logger'].info('Anchors [{idx}]\n{anchors}'.format(idx=idx, anchors=str(anchors)))
                 kwargs['logger'].info('Anchors [{idx}]\n{anchors}'.format(idx=idx, anchors=anchors_info))
                 

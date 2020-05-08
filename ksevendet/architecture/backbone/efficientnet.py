@@ -397,7 +397,8 @@ class EfficientNetFeatures(nn.Module):
     def __init__(self, block_args, out_indices=(0, 1, 2, 3, 4), feature_location='bottleneck',
                  in_chans=3, stem_size=32, channel_multiplier=1.0, channel_divisor=8, channel_min=None,
                  output_stride=32, pad_type='', fix_stem=False, act_layer=nn.ReLU, drop_rate=0., drop_path_rate=0.,
-                 se_kwargs=None, norm_layer=nn.BatchNorm2d, norm_kwargs=None):
+                 se_kwargs=None, norm_layer=nn.BatchNorm2d, norm_kwargs=None, 
+                 **kwargs):
         super(EfficientNetFeatures, self).__init__()
         norm_kwargs = norm_kwargs or {}
 
@@ -440,14 +441,29 @@ class EfficientNetFeatures(nn.Module):
                 type=self._feature_info[idx]['hook_type']) for idx in out_indices]
             self.feature_hooks = FeatureHooks(hooks, self.named_modules())
 
+        # To fix out pyramid feature levels
+        #   example: _stage_to_feature_idx = {0: 0, 1: 1, 2: 2, 4: 3, 6: 4} for mobilenetv2_100
+        backbone_feature_pyramid_levels = [3, 4, 5]
+        self.backbone_feature_pyramid_levels = backbone_feature_pyramid_levels
+        original_stages = list(self._stage_to_feature_idx.keys())
+        for k in original_stages:
+            if self._stage_to_feature_idx[k] + 1 not in backbone_feature_pyramid_levels:
+                self._stage_to_feature_idx.pop(k)
+        self.features_num = dict()
+        for i in backbone_feature_pyramid_levels:
+            self.features_num[f'c{i}'] = self._feature_info[i-1]['num_chs']
+
     def feature_channels(self, idx=None):
         """ Feature Channel Shortcut
         Returns feature channel count for each output index if idx == None. If idx is an integer, will
         return feature channel count for that feature block index (independent of out_indices setting).
         """
+        #if isinstance(idx, int):
+        #    return self._feature_info[idx]['num_chs']
+        #return [self._feature_info[i]['num_chs'] for i in self.out_indices]
         if isinstance(idx, int):
-            return self._feature_info[idx]['num_chs']
-        return [self._feature_info[i]['num_chs'] for i in self.out_indices]
+            return self._feature_info[idx-1]['num_chs']
+        return [self._feature_info[i-1]['num_chs'] for i in self.backbone_feature_pyramid_levels]
 
     def feature_info(self, idx=None):
         """ Feature Channel Shortcut
@@ -459,18 +475,18 @@ class EfficientNetFeatures(nn.Module):
         return [self._feature_info[i] for i in self.out_indices]
 
     def forward(self, x):
-        print(f'Input Shape : {str(x.shape)}')
+        # print(f'Input Shape : {str(x.shape)}')
         x = self.conv_stem(x)
-        print(f'x_stem Shape : {str(x.shape)}')
+        # print(f'x_stem Shape : {str(x.shape)}')
         x = self.bn1(x)
         x = self.act1(x)
         if self.feature_hooks is None:
             features = []
             for i, b in enumerate(self.blocks):
                 x = b(x)
-                print(f'Block_{i} Shape : {str(x.shape)}')
+                # print(f'Block_{i} Shape : {str(x.shape)}')
                 if i in self._stage_to_feature_idx:
-                    print('add feature ...')
+                    # print('add feature ...')
                     features.append(x)
             return features
         else:
@@ -983,34 +999,34 @@ def mnasnet_small(pretrained=False, **kwargs):
     return model
 
 
-@register_model
-def mobilenetv2_100(pretrained=False, **kwargs):
-    """ MobileNet V2 w/ 1.0 channel multiplier """
-    model = _gen_mobilenet_v2('mobilenetv2_100', 1.0, pretrained=pretrained, **kwargs)
-    return model
+# @register_model
+# def mobilenetv2_100(pretrained=False, **kwargs):
+#     """ MobileNet V2 w/ 1.0 channel multiplier """
+#     model = _gen_mobilenet_v2('mobilenetv2_100', 1.0, pretrained=pretrained, **kwargs)
+#     return model
 
 
-@register_model
-def mobilenetv2_140(pretrained=False, **kwargs):
-    """ MobileNet V2 w/ 1.4 channel multiplier """
-    model = _gen_mobilenet_v2('mobilenetv2_140', 1.4, pretrained=pretrained, **kwargs)
-    return model
+# @register_model
+# def mobilenetv2_140(pretrained=False, **kwargs):
+#     """ MobileNet V2 w/ 1.4 channel multiplier """
+#     model = _gen_mobilenet_v2('mobilenetv2_140', 1.4, pretrained=pretrained, **kwargs)
+#     return model
 
 
-@register_model
-def mobilenetv2_110d(pretrained=False, **kwargs):
-    """ MobileNet V2 w/ 1.1 channel, 1.2 depth multipliers"""
-    model = _gen_mobilenet_v2(
-        'mobilenetv2_110d', 1.1, depth_multiplier=1.2, fix_stem_head=True, pretrained=pretrained, **kwargs)
-    return model
+# @register_model
+# def mobilenetv2_110d(pretrained=False, **kwargs):
+#     """ MobileNet V2 w/ 1.1 channel, 1.2 depth multipliers"""
+#     model = _gen_mobilenet_v2(
+#         'mobilenetv2_110d', 1.1, depth_multiplier=1.2, fix_stem_head=True, pretrained=pretrained, **kwargs)
+#     return model
 
 
-@register_model
-def mobilenetv2_120d(pretrained=False, **kwargs):
-    """ MobileNet V2 w/ 1.2 channel, 1.4 depth multipliers """
-    model = _gen_mobilenet_v2(
-        'mobilenetv2_120d', 1.2, depth_multiplier=1.4, fix_stem_head=True, pretrained=pretrained, **kwargs)
-    return model
+# @register_model
+# def mobilenetv2_120d(pretrained=False, **kwargs):
+#     """ MobileNet V2 w/ 1.2 channel, 1.4 depth multipliers """
+#     model = _gen_mobilenet_v2(
+#         'mobilenetv2_120d', 1.2, depth_multiplier=1.4, fix_stem_head=True, pretrained=pretrained, **kwargs)
+#     return model
 
 
 @register_model

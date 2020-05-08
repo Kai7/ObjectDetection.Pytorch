@@ -54,7 +54,7 @@ ksevendet_cfg = {
 # net_model = res2net.res2net50_26w_8s(features_only=True)
 # net_model = res2net.res2net50_48w_2s(features_only=True)
 # net_model = res2net.res2net101_26w_4s(features_only=True)
-net_model = resnet.resnet18(features_only=True)
+# net_model = resnet.resnet18(features_only=True)
 # net_model = resnet.resnet26(features_only=True)
 # net_model = resnet.resnet26d(features_only=True)
 # net_model = resnet.resnet34(features_only=True)
@@ -83,12 +83,20 @@ net_model = resnet.resnet18(features_only=True)
 # net_model = shufflenetv2.shufflenet_v2_x2_0(features_only=True)
 
 
-# net_model = mobilenetv2.mobilenet_v2(features_only=True)
+# net_model = mobilenetv2.mobilenetv2_torchvision(features_only=True)
 
-# net_model = efficientnet.mobilenetv2_100(features_only=True)
-# net_model = efficientnet.mobilenetv2_110d(features_only=True)
-# net_model = efficientnet.mobilenetv2_120d(features_only=True)
-# net_model = efficientnet.mobilenetv2_140(features_only=True)
+net_model = mobilenetv2.mobilenetv2_100(features_only=True)
+# net_model = mobilenetv2.mobilenetv2_110d(features_only=True)
+# net_model = mobilenetv2.mobilenetv2_120d(features_only=True)
+# net_model = mobilenetv2.mobilenetv2_140(features_only=True)
+# print(net_model._stage_to_feature_idx)
+# print(net_model._feature_info.items())
+# for k in net_model._feature_info:
+#     print(k)
+#     for t in net_model._feature_info[k]:
+#         print(f'{t}: {net_model._feature_info[k][t]}')
+#     print()
+# pdb.set_trace()
 
 # net_model = densenet.densenet121(features_only=True)
 # net_model = densenet.densenet161(features_only=True)
@@ -99,6 +107,13 @@ net_model = resnet.resnet18(features_only=True)
 # net_model = mnasnet.mnasnet0_75()
 # net_model = mnasnet.mnasnet1_0()
 # net_model = mnasnet.mnasnet1_3()
+# net_model = efficientnet.mnasnet_050(features_only=True)
+# net_model = efficientnet.mnasnet_075(features_only=True)
+# net_model = efficientnet.mnasnet_100(features_only=True)
+# net_model = efficientnet.mnasnet_140(features_only=True)
+# net_model = efficientnet.mnasnet_a1(features_only=True)
+# net_model = efficientnet.mnasnet_b1(features_only=True)
+# net_model = efficientnet.mnasnet_small(features_only=True)
 
 # net_model = ksevendet.KSevenDet(ksevendet_cfg)
 

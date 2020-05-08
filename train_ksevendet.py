@@ -1,4 +1,5 @@
 import argparse
+import yaml
 import collections
 import numpy as np
 import torch
@@ -36,14 +37,18 @@ def get_args():
     parser = argparse.ArgumentParser(description='Simple training script for training a RetinaNet network.')
     
     parser.add_argument('--dataset', help='Dataset Name')
-    parser.add_argument('--dataset_root',
-                        default='/root/data/',
+    parser.add_argument('--dataset_root', default='/root/data/',
                         help='Dataset root directory path [/root/data/coco/, /root/data/FLIR_ADAS]')
-    parser.add_argument('--dataset_type', 
-                        default='kseven',
+    parser.add_argument('--dataset_type', default='kseven',
                         help='Dataset type, must be one of kseven, coco, flir')
+    parser.add_argument('--model_config', default='', type=str, metavar='FILE',
+                        help='YAML config file specifying default arguments')
     parser.add_argument('--architecture', default='ksevendet', type=str,
                         help='Network Architecture.')
+    parser.add_argument('--backbone', default='resnet', type=str,
+                        help='KSevenDet backbone.')
+    parser.add_argument('--neck', default='fpn', type=str,
+                        help='KSevenDet neck.')
     parser.add_argument('--resume', default=None, type=str,
                         help='Checkpoint state_dict file to resume training from')
     parser.add_argument('--batch_size', default=16, type=int,
@@ -69,7 +74,17 @@ def get_args():
     parser.add_argument('--valid_period', default=5, type=int,
                         help='Batch size for training')
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.model_config:
+        with open(args.model_config, 'r') as f:
+            model_cfg = yaml.safe_load(f)
+        setattr(args, 'architecture', model_cfg.pop('architecture'))
+        setattr(args, 'model_cfg', model_cfg)
+    # print(model_cfg)
+    # pdb.set_trace()
+        
+
+    return args
 
 def get_logger(name='My Logger', args=None):
     LOGGING_FORMAT = '%(levelname)s:    %(message)s'
@@ -118,12 +133,14 @@ def main():
 
     # write_support_backbones(default_support_backbones)
 
-    # BACKBONE = 'shuflenetv2'
-    BACKBONE = 'densenet'
+    # BACKBONE = 'shufflenetv2'
+    # VARIANT  = 'shufflenetv2_x0_5'
+    # BACKBONE = 'densenet'
     # BACKBONE = 'mnasnet'
     # BACKBONE = 'mobilenetv2'
     # BACKBONE = 'resnet'
     # BACKBONE = 'res2net'
+    # BACKBONE = 'sknet'
 
     # NECK = 'fpn'
     # NECK = 'panet-fpn'
@@ -143,15 +160,20 @@ def main():
     print(support_architectures)
 
     if args.architecture == 'ksevendet':
-        ksevendet_cfg = {
-            'backbone'          : BACKBONE,
-            'neck'              : NECK,
-            'fpn_features_num'  : FPN_FEATURES_NUM,
-            'num_classes'       : 2,
-            'backbone_feature_pyramid_levels' : [3, 4, 5],
-            'neck_feature_pyramid_levels'     : [3, 4, 5, 6, 7],
-        }
-        network_name = f'{args.architecture}-{ksevendet_cfg["backbone"]}-{ksevendet_cfg["neck"]}'
+        # ksevendet_cfg = {
+        #     'backbone'          : BACKBONE,
+        #     'variant'           : VARIANT,
+        #     'neck'              : NECK,
+        #     'fpn_features_num'  : FPN_FEATURES_NUM,
+        #     'backbone_feature_pyramid_levels' : [3, 4, 5],
+        #     'neck_feature_pyramid_levels'     : [3, 4, 5, 6, 7],
+        # }
+        ksevendet_cfg = args.model_cfg
+        if ksevendet_cfg.get('variant'):
+            network_name = f'{args.architecture}-{ksevendet_cfg["variant"]}-{ksevendet_cfg["neck"]}'
+        else:
+            assert isinstance(ksevendet_cfg, dict)
+            network_name = f'{args.architecture}-{ksevendet_cfg["backbone"]}_specifical-{ksevendet_cfg["neck"]}'
     elif args.architecture in support_architectures:
         network_name = args.architecture
     else:
@@ -212,7 +234,7 @@ def main():
     
     build_param = {'logger': net_logger}
     if args.architecture == 'ksevendet':
-        net_model = ksevendet.KSevenDet(ksevendet_cfg, pretrained=False, **build_param)
+        net_model = ksevendet.KSevenDet(ksevendet_cfg, num_classes=dataset_train.num_classes(), pretrained=False, **build_param)
     elif args.architecture == 'retinanet-p45p6':
         net_model = retinanet.retinanet_p45p6(num_classes=dataset_train.num_classes(), **build_param)
     elif args.architecture.split('-')[0] == 'retinanet':
