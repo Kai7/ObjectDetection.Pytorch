@@ -10,7 +10,7 @@ from ksevendet.architecture.losses import FocalLoss
 # from architectures.backbone import shufflenetv2, densenet, mnasnet, mobilenet
 from ksevendet.architecture.backbone import shufflenetv2, mobilenetv2, mobilenetv3, efficientnet, resnet, densenet, res2net, senet, sknet
 from ksevendet.architecture.neck import FPN, PANetFPN, BiFPN
-from ksevendet.architecture.head import RegressorV1, RegressorV2, ClassifierV1, ClassifierV2
+from ksevendet.architecture.head import Regressor, Classifier, RegressorV1, RegressorV2, ClassifierV1, ClassifierV2
 
 import ksevendet.architecture.backbone.registry as registry
 
@@ -37,7 +37,7 @@ class KSevenDet(nn.Module):
         # my_pyramid_levels = [3, 4, 5, 6, 7]
         # self.head = self._build_head(cfg)
         # fpn_features_num = cfg.get('fpn_features_num', 256)
-        fpn_features_num = cfg['fpn_features_num']
+        fpn_features_num = cfg['neck_config']['features_num']
         if logger:
             logger.info(f'FPN Features Num : {fpn_features_num}')
         
@@ -63,6 +63,8 @@ class KSevenDet(nn.Module):
             bifpn_repeats = cfg['neck_config']['bifpn_repeats']
             bifpn_attention = cfg['neck_config']['bifpn_attention']
             if logger:
+                logger.info(f'==== Build Neck Layer ====================')
+                logger.info(f'==== Build Neck Layer ====')
                 logger.info(f'BiFPN Repeats: {bifpn_repeats}')
             _bifpn_modules = [BiFPN(_feature_channels, 
                                     in_pyramid_levels=self.backbone_feature_pyramid_levels, 
@@ -76,15 +78,21 @@ class KSevenDet(nn.Module):
         else:
             raise ValueError(f'Unknown neck {cfg["neck"]}')
 
-        HEAD_VERSION = 2
-        if HEAD_VERSION == 1:
-            self.head_version = 1
-            self.regressor = RegressorV1(fpn_features_num)
-            self.classifier = ClassifierV1(fpn_features_num, num_classes=self.num_classes)
-        else:
-            self.head_version = 2
-            self.regressor = RegressorV2(fpn_features_num)
-            self.classifier = ClassifierV2(fpn_features_num, num_classes=self.num_classes)
+        
+
+        self.head_version = 1
+        self.regressor = Regressor(fpn_features_num, logger=logger, **cfg['head_config'])
+        self.classifier = Classifier(fpn_features_num, num_classes=self.num_classes, logger=logger, **cfg['head_config'])
+
+        #HEAD_VERSION = 1
+        #if HEAD_VERSION == 1:
+        #    self.head_version = 1
+        #    self.regressor = RegressorV1(fpn_features_num)
+        #    self.classifier = ClassifierV1(fpn_features_num, num_classes=self.num_classes)
+        #else:
+        #    self.head_version = 2
+        #    self.regressor = RegressorV2(fpn_features_num)
+        #    self.classifier = ClassifierV2(fpn_features_num, num_classes=self.num_classes)
 
         my_pyramid_levels = self.neck_feature_pyramid_levels
         # my_sizes   = [int(2 ** (x + 1) * 1.25) for x in my_pyramid_levels]
@@ -125,14 +133,14 @@ class KSevenDet(nn.Module):
 
         backbone_build_info = {
             'features_only': True, 
-            'backbone_feature_pyramid_level': self.backbone_feature_pyramid_levels
+            'backbone_feature_pyramid_level': self.backbone_feature_pyramid_levels,
         }
         if cfg.get('variant', None):
             assert registry.is_model(cfg['variant']), f'Variant: {cfg["variant"]} not support.'
             build_fn = registry.model_entrypoint(cfg['variant'])
             if logger:
                 logger.info(f'Use default variant: {build_fn}')
-            return build_fn(**backbone_build_info)
+            return build_fn(**backbone_build_info, **kwargs)
         else:
             assert cfg.get('backbone_config')
 

@@ -3,7 +3,7 @@ import torch.nn as nn
 import math
 
 
-__all__ = ['RegressorV1', 'ClassifierV1', 'RegressorV2', 'ClassifierV2']
+__all__ = ['Regressor', 'Classifier', 'RegressorV1', 'ClassifierV1', 'RegressorV2', 'ClassifierV2']
 
 ONNX_EXPORT = True
 
@@ -39,7 +39,8 @@ class SeparableConvBlock(nn.Module):
     """
     created by Zylo117
     """
-    def __init__(self, in_channels, out_channels=None, norm=True, activation=True, act_func=Swish, onnx_export=ONNX_EXPORT):
+    def __init__(self, in_channels, out_channels=None, kernel_size=3, stride=1, padding=1, 
+                 norm=True, activation=True, act_func=Swish, onnx_export=ONNX_EXPORT):
         super(SeparableConvBlock, self).__init__()
         if out_channels is None:
             out_channels = in_channels
@@ -49,10 +50,8 @@ class SeparableConvBlock(nn.Module):
         #  or just pointwise_conv apply bias.
         # A: Confirmed, just pointwise_conv applies bias, depthwise_conv has no bias.
 
-        # self.depthwise_conv = Conv2dStaticSamePadding(in_channels, in_channels,
-        #                                               kernel_size=3, stride=1, groups=in_channels, bias=False)
-        # self.pointwise_conv = Conv2dStaticSamePadding(in_channels, out_channels, kernel_size=1, stride=1)
-        self.depthwise_conv = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1, bias=False, groups=in_channels)
+        self.depthwise_conv = nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, stride=stride, padding=padding, 
+                                        bias=False, groups=in_channels)
         self.pointwise_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
 
         self.norm = norm
@@ -75,6 +74,133 @@ class SeparableConvBlock(nn.Module):
             x = self.swish(x)
 
         return x
+
+class Regressor(nn.Module):
+    """
+    modified by Zylo117
+    """
+
+    def __init__(self, in_features_num, num_anchors=9, 
+                 features_num=256, layers_num=3, num_pyramid_levels=5, head_type='simple', act_type='relu', onnx_export=ONNX_EXPORT,
+                 **kwargs):
+        assert head_type in ['simple', 'efficient']
+        assert act_type in ['relu', 'swish']
+        super(Regressor, self).__init__()
+        self.layers_num = layers_num
+        self.num_pyramid_levels = num_pyramid_levels
+        self.head_type = head_type
+
+        logger = kwargs.get('logger', None)
+        if logger:
+            logger.info(f'==== Build Head Layer ====================')
+            logger.info(f'Head Type    : Regression ({head_type} + {act_type})')
+            logger.info(f'Features Num : {features_num}')
+            logger.info(f'Layers Num   : {layers_num}')
+
+        _conv_block = SeparableConvBlock if head_type == 'efficient' else nn.Conv2d
+        _conv_kwargs = {'kernel_size': 3, 'stride': 1, 'padding': 1}
+        if head_type == 'efficient':
+            _conv_kwargs.update({'norm': False, 'activation': False})
+        self.conv_list = nn.ModuleList(
+            [_conv_block(in_features_num if i == 0 else features_num, 
+                         features_num, **_conv_kwargs) for i in range(layers_num)])
+        self.bn_list = nn.ModuleList(
+            [nn.ModuleList([nn.BatchNorm2d(features_num, 
+                                           momentum=0.01, eps=1e-3) for i in range(layers_num)]) for j in
+             range(num_pyramid_levels)])
+
+        self.header = _conv_block(features_num, num_anchors * 4, **_conv_kwargs)
+        
+        if act_type == 'swish':
+            self.act_fn = MemoryEfficientSwish() if not onnx_export else Swish()
+        else:
+            self.act_fn = nn.ReLU()
+
+    def forward(self, inputs):
+        feats = []
+        for feat, bn_list in zip(inputs, self.bn_list):
+            for i, bn, conv in zip(range(self.layers_num), bn_list, self.conv_list):
+                feat = conv(feat)
+                feat = bn(feat)
+                feat = self.act_fn(feat)
+            feat = self.header(feat)
+
+            feat = feat.permute(0, 2, 3, 1)
+            feat = feat.contiguous().view(feat.shape[0], -1, 4)
+
+            feats.append(feat)
+
+        feats = torch.cat(feats, dim=1)
+
+        return feats
+
+
+class Classifier(nn.Module):
+    """
+    modified by Zylo117
+    """
+
+    def __init__(self, in_features_num, num_anchors=9, num_classes=80, 
+                 features_num=256, layers_num=3, num_pyramid_levels=5, head_type='simple', act_type='relu', onnx_export=ONNX_EXPORT,
+                 **kwargs):
+        assert head_type in ['simple', 'efficient']
+        assert act_type in ['relu', 'swish']
+        super(Classifier, self).__init__()
+        self.num_anchors = num_anchors
+        self.num_classes = num_classes
+        self.layers_num = layers_num
+        self.num_pyramid_levels = num_pyramid_levels
+        logger = kwargs.get('logger', None)
+        if logger:
+            logger.info(f'==== Build Head Layer ====================')
+            logger.info(f'Head Type    : Classification ({head_type} + {act_type})')
+            logger.info(f'Features Num : {features_num}')
+            logger.info(f'Layers Num   : {layers_num}')
+
+        _conv_block = SeparableConvBlock if head_type == 'efficient' else nn.Conv2d
+        _conv_kwargs = {'kernel_size': 3, 'stride': 1, 'padding': 1}
+        if head_type == 'efficient':
+            _conv_kwargs.update({'norm': False, 'activation': False})
+        self.conv_list = nn.ModuleList(
+            [_conv_block(in_features_num if i == 0 else features_num, 
+                         features_num, **_conv_kwargs) for i in range(layers_num)])
+        self.bn_list = nn.ModuleList(
+            [nn.ModuleList([nn.BatchNorm2d(features_num, 
+                                           momentum=0.01, eps=1e-3) for i in range(layers_num)]) for j in
+             range(num_pyramid_levels)])
+
+        self.header = _conv_block(features_num, num_anchors * num_classes, **_conv_kwargs)
+
+        if act_type == 'swish':
+            self.act_fn = MemoryEfficientSwish() if not onnx_export else Swish()
+        else:
+            self.act_fn = nn.ReLU()
+        
+        self.header_act = nn.Sigmoid()
+
+    def forward(self, inputs):
+        feats = []
+        for feat, bn_list in zip(inputs, self.bn_list):
+            for i, bn, conv in zip(range(self.layers_num), bn_list, self.conv_list):
+                feat = conv(feat)
+                feat = bn(feat)
+                feat = self.act_fn(feat)
+            feat = self.header(feat)
+
+            feat = feat.permute(0, 2, 3, 1)
+            feat = feat.contiguous().view(feat.shape[0], feat.shape[1], feat.shape[2], self.num_anchors,
+                                          self.num_classes)
+            feat = feat.contiguous().view(feat.shape[0], -1, self.num_classes)
+
+            feats.append(feat)
+
+        feats = torch.cat(feats, dim=1)
+        # feats = feats.sigmoid()
+        feats = self.header_act(feats)
+
+        return feats
+
+
 
 class RegressorV1(nn.Module):
     """

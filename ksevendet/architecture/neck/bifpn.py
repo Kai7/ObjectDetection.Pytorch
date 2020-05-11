@@ -41,7 +41,7 @@ class BiFPN(nn.Module):
         logger = kwargs.get('logger', None)
         if logger:
             logger.info('Build Neck: BiFPN')
-            logger.info(f'FPN Features: {features_num}')
+            logger.info(f'Features Num: {features_num}')
             logger.info(f'First: {first_time}')
             logger.info(f'Attention: {attention}')
 

@@ -20,12 +20,20 @@ backbone_config: {
 #neck: panet-fpn
 neck: bifpn
 neck_config: {
-    bifpn_repeats: 2,
+    features_num: 64,
+    #features_num: 128,
+    #features_num: 256,
+    bifpn_repeats: 3,
     bifpn_attention: False,
 }
 
-fpn_features_num : 64
-#fpn_features_num : 128
-#fpn_features_num : 256
+head_config: {
+    head_type:    'efficient',
+    #act_type:     'swish',
+    features_num: 128,
+    #features_num: 256,
+    layers_num  : 3,
+}
+
 backbone_feature_pyramid_levels : [3, 4, 5]
 neck_feature_pyramid_levels     : [3, 4, 5, 6, 7]

@@ -297,6 +297,7 @@ default_cfgs = {
 }
 
 _DEBUG = False
+# _DEBUG = True
 
 
 class EfficientNet(nn.Module):
@@ -421,7 +422,7 @@ class EfficientNetFeatures(nn.Module):
         # Middle stages (IR/ER/DS Blocks)
         builder = EfficientNetBuilder(
             channel_multiplier, channel_divisor, channel_min, output_stride, pad_type, act_layer, se_kwargs,
-            norm_layer, norm_kwargs, drop_path_rate, feature_location=feature_location, verbose=_DEBUG)
+            norm_layer, norm_kwargs, drop_path_rate, feature_location=feature_location, verbose=_DEBUG, **kwargs)
         self.blocks = nn.Sequential(*builder(self._in_chs, block_args))
         self._feature_info = builder.features  # builder provides info about feature channels for each block
         self._stage_to_feature_idx = {
@@ -429,9 +430,9 @@ class EfficientNetFeatures(nn.Module):
         self._in_chs = builder.in_chs
 
         efficientnet_init_weights(self)
-        if _DEBUG:
-            for k, v in self._feature_info.items():
-                print('Feature idx: {}: Name: {}, Channels: {}'.format(k, v['name'], v['num_chs']))
+        # if _DEBUG:
+        #     for k, v in self._feature_info.items():
+        #         print('Feature idx: {}: Name: {}, Channels: {}'.format(k, v['name'], v['num_chs']))
 
         # Register feature extraction hooks with FeatureHooks helper
         self.feature_hooks = None
@@ -1050,6 +1051,7 @@ def spnasnet_100(pretrained=False, **kwargs):
 def efficientnet_b0(pretrained=False, **kwargs):
     """ EfficientNet-B0 """
     # NOTE for train, drop_rate should be 0.2, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet(
         'efficientnet_b0', channel_multiplier=1.0, depth_multiplier=1.0, pretrained=pretrained, **kwargs)
     return model
@@ -1059,6 +1061,7 @@ def efficientnet_b0(pretrained=False, **kwargs):
 def efficientnet_b1(pretrained=False, **kwargs):
     """ EfficientNet-B1 """
     # NOTE for train, drop_rate should be 0.2, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet(
         'efficientnet_b1', channel_multiplier=1.0, depth_multiplier=1.1, pretrained=pretrained, **kwargs)
     return model
@@ -1068,6 +1071,7 @@ def efficientnet_b1(pretrained=False, **kwargs):
 def efficientnet_b2(pretrained=False, **kwargs):
     """ EfficientNet-B2 """
     # NOTE for train, drop_rate should be 0.3, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet(
         'efficientnet_b2', channel_multiplier=1.1, depth_multiplier=1.2, pretrained=pretrained, **kwargs)
     return model
@@ -1077,6 +1081,7 @@ def efficientnet_b2(pretrained=False, **kwargs):
 def efficientnet_b2a(pretrained=False, **kwargs):
     """ EfficientNet-B2 @ 288x288 w/ 1.0 test crop"""
     # NOTE for train, drop_rate should be 0.3, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet(
         'efficientnet_b2a', channel_multiplier=1.1, depth_multiplier=1.2, pretrained=pretrained, **kwargs)
     return model
@@ -1086,6 +1091,7 @@ def efficientnet_b2a(pretrained=False, **kwargs):
 def efficientnet_b3(pretrained=False, **kwargs):
     """ EfficientNet-B3 """
     # NOTE for train, drop_rate should be 0.3, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet(
         'efficientnet_b3', channel_multiplier=1.2, depth_multiplier=1.4, pretrained=pretrained, **kwargs)
     return model
@@ -1095,6 +1101,7 @@ def efficientnet_b3(pretrained=False, **kwargs):
 def efficientnet_b3a(pretrained=False, **kwargs):
     """ EfficientNet-B3 @ 320x320 w/ 1.0 test crop-pct """
     # NOTE for train, drop_rate should be 0.3, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet(
         'efficientnet_b3a', channel_multiplier=1.2, depth_multiplier=1.4, pretrained=pretrained, **kwargs)
     return model
@@ -1104,6 +1111,7 @@ def efficientnet_b3a(pretrained=False, **kwargs):
 def efficientnet_b4(pretrained=False, **kwargs):
     """ EfficientNet-B4 """
     # NOTE for train, drop_rate should be 0.4, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet(
         'efficientnet_b4', channel_multiplier=1.4, depth_multiplier=1.8, pretrained=pretrained, **kwargs)
     return model
@@ -1113,6 +1121,7 @@ def efficientnet_b4(pretrained=False, **kwargs):
 def efficientnet_b5(pretrained=False, **kwargs):
     """ EfficientNet-B5 """
     # NOTE for train, drop_rate should be 0.4, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet(
         'efficientnet_b5', channel_multiplier=1.6, depth_multiplier=2.2, pretrained=pretrained, **kwargs)
     return model
@@ -1122,6 +1131,7 @@ def efficientnet_b5(pretrained=False, **kwargs):
 def efficientnet_b6(pretrained=False, **kwargs):
     """ EfficientNet-B6 """
     # NOTE for train, drop_rate should be 0.5, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet(
         'efficientnet_b6', channel_multiplier=1.8, depth_multiplier=2.6, pretrained=pretrained, **kwargs)
     return model
@@ -1131,6 +1141,7 @@ def efficientnet_b6(pretrained=False, **kwargs):
 def efficientnet_b7(pretrained=False, **kwargs):
     """ EfficientNet-B7 """
     # NOTE for train, drop_rate should be 0.5, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet(
         'efficientnet_b7', channel_multiplier=2.0, depth_multiplier=3.1, pretrained=pretrained, **kwargs)
     return model
@@ -1140,6 +1151,7 @@ def efficientnet_b7(pretrained=False, **kwargs):
 def efficientnet_b8(pretrained=False, **kwargs):
     """ EfficientNet-B8 """
     # NOTE for train, drop_rate should be 0.5, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet(
         'efficientnet_b8', channel_multiplier=2.2, depth_multiplier=3.6, pretrained=pretrained, **kwargs)
     return model
@@ -1210,6 +1222,7 @@ def efficientnet_cc_b1_8e(pretrained=False, **kwargs):
 def efficientnet_lite0(pretrained=False, **kwargs):
     """ EfficientNet-Lite0 """
     # NOTE for train, drop_rate should be 0.2, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet_lite(
         'efficientnet_lite0', channel_multiplier=1.0, depth_multiplier=1.0, pretrained=pretrained, **kwargs)
     return model
@@ -1219,6 +1232,7 @@ def efficientnet_lite0(pretrained=False, **kwargs):
 def efficientnet_lite1(pretrained=False, **kwargs):
     """ EfficientNet-Lite1 """
     # NOTE for train, drop_rate should be 0.2, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet_lite(
         'efficientnet_lite1', channel_multiplier=1.0, depth_multiplier=1.1, pretrained=pretrained, **kwargs)
     return model
@@ -1228,6 +1242,7 @@ def efficientnet_lite1(pretrained=False, **kwargs):
 def efficientnet_lite2(pretrained=False, **kwargs):
     """ EfficientNet-Lite2 """
     # NOTE for train, drop_rate should be 0.3, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet_lite(
         'efficientnet_lite2', channel_multiplier=1.1, depth_multiplier=1.2, pretrained=pretrained, **kwargs)
     return model
@@ -1237,6 +1252,7 @@ def efficientnet_lite2(pretrained=False, **kwargs):
 def efficientnet_lite3(pretrained=False, **kwargs):
     """ EfficientNet-Lite3 """
     # NOTE for train, drop_rate should be 0.3, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet_lite(
         'efficientnet_lite3', channel_multiplier=1.2, depth_multiplier=1.4, pretrained=pretrained, **kwargs)
     return model
@@ -1246,6 +1262,7 @@ def efficientnet_lite3(pretrained=False, **kwargs):
 def efficientnet_lite4(pretrained=False, **kwargs):
     """ EfficientNet-Lite4 """
     # NOTE for train, drop_rate should be 0.4, drop_path_rate should be 0.2
+    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
     model = _gen_efficientnet_lite(
         'efficientnet_lite4', channel_multiplier=1.4, depth_multiplier=1.8, pretrained=pretrained, **kwargs)
     return model

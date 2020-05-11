@@ -103,8 +103,9 @@ class PANetFPN(nn.Module):
 
         logger = kwargs.get('logger', None)
         if logger:
-            logger.info('Build Neck: {}'.format('FPN' if not panet_buttomup else 'PANet-FPN'))
-            logger.info(f'FPN Features: {features_num}')
+            logger.info(f'==== Build Neck Layer ====================')
+            logger.info('Neck : {}'.format('FPN' if not panet_buttomup else 'PANet-FPN'))
+            logger.info(f'FPN Features : {features_num}')
 
         # self.dim_out = fpn_dim = cfg.FPN.DIM
         # min_level, max_level = get_min_max_levels()
