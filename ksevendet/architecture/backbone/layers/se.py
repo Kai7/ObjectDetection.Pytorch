@@ -1,3 +1,8 @@
+""" SE Module 
+
+Experimental impl of Squeeze-and-Excitation Networks: https://arxiv.org/abs/1709.01507
+"""
+
 from torch import nn as nn
 
 

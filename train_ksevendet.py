@@ -26,6 +26,8 @@ from utils.utils import replace_w_sync_bn, CustomDataParallel, get_last_weights,
 import os
 import sys
 import logging
+# from thop import profile
+# from distiller import model_summaries
 
 import pdb
 
@@ -189,7 +191,8 @@ def main():
 
     _shape_1, _shape_2 = tuple(map(int, args.input_shape.split(',')))
     _normalizer = Normalizer()
-    _augmenter  = Augmenter()
+    _augmenter  = Augmenter(logger=net_logger)
+    # exit(0)
     if args.resize_mode == 0:
         _resizer = Resizer(min_side=_shape_1, max_side=_shape_2, resize_mode=args.resize_mode, logger=net_logger)
     elif args.resize_mode == 1:
@@ -197,8 +200,8 @@ def main():
     else:
         raise ValueError('Illegal resize mode.')
     transfrom_funcs_train = [
-        _normalizer,
         _augmenter,
+        _normalizer,
         _resizer,
     ]
     transfrom_funcs_valid = [
@@ -208,8 +211,8 @@ def main():
     # Create the data loaders
     if args.dataset_type == 'kseven':
         dataset_train = KSevenDataset(args.dataset_root, set_name='train', transform=transforms.Compose(transfrom_funcs_train))
-        # dataset_valid = KSevenDataset(args.dataset_root, set_name='valid', transform=transforms.Compose(transfrom_funcs_valid))
-        dataset_valid = KSevenDataset(args.dataset_root, set_name='train', transform=transforms.Compose(transfrom_funcs_valid))
+        # dataset_valid = KSevenDataset(args.dataset_root, set_name='train', transform=transforms.Compose(transfrom_funcs_valid))
+        dataset_valid = KSevenDataset(args.dataset_root, set_name='valid', transform=transforms.Compose(transfrom_funcs_valid))
     elif args.dataset_type == 'coco':
         dataset_train = CocoDataset(args.dataset_root, set_name='train', transform=transforms.Compose(transfrom_funcs_train))
         dataset_valid = CocoDataset(args.dataset_root, set_name='valid', transform=transforms.Compose(transfrom_funcs_valid))
@@ -244,6 +247,12 @@ def main():
     else:
         assert 0, 'architecture error'
 
+    # _shape_1, _shape_2 = tuple(map(int, args.input_shape.split(',')))
+    # sample_input = torch.randn(1, 3, _shape_1, _shape_2)
+    # sample_input_shape = dataset_valid[0]['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0).shape
+    # net_model.eval()
+    # model_summaries.model_summary(net_model, 'compute', input_shape=sample_input_shape)
+    # exit(0)
 
     # load last weights
     if args.resume is not None:
@@ -415,8 +424,8 @@ def main():
 
         scheduler.step(np.mean(epoch_loss))
         print('Learning Rate:', str(scheduler._last_lr))
-        # save_checkpoint(net_model, os.path.join(
-        #                 'saved', '{}_{}_{}.pt'.format(args.dataset, network_name, epoch_num)))
+        save_checkpoint(net_model, os.path.join(
+                        'saved', '{}_{}_{}.pt'.format(args.dataset, network_name, epoch_num)))
 
     net_logger.info('Training Complete.')
 

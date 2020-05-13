@@ -1,24 +1,12 @@
 architecture: ksevendet
-backbone: efficientnet
+backbone: resnet 
 
 # Default Support Variant
-#variant: efficientnet_b0
-#variant: efficientnet_b1
-#variant: efficientnet_b2
-#variant: efficientnet_b2a
-#variant: efficientnet_b3
-#variant: efficientnet_b3a
-#variant: efficientnet_b4
-#variant: efficientnet_b5
-#variant: efficientnet_b6
-#variant: efficientnet_b7
-#variant: efficientnet_b8
-#variant: efficientnet_lite0
-variant: efficientnet_lite1
-#variant: efficientnet_lite2
-#variant: efficientnet_lite3
-#variant: efficientnet_lite4
-#variant: efficientnet_
+variant: resnext50_32x4d
+#variant: resnext50d_32x4d
+#variant: resnext101_32x4d
+#variant: resnext101_32x8d
+#variant: resnext101_64x4d
 
 # Specifical Build Config
 #build_config: {}
@@ -28,14 +16,14 @@ backbone_config: {
     stages_out_channels: [24, 116, 232, 464, 1024],
 }
 
-#neck: fpn
+neck: fpn
 #neck: panet-fpn
-neck: bifpn
+#neck: bifpn
 neck_config: {
     features_num: 64,
     #features_num: 128,
     #features_num: 256,
-    bifpn_repeats: 1,
+    bifpn_repeats: 3,
     bifpn_attention: False,
 }
 

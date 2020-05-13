@@ -1,24 +1,12 @@
 architecture: ksevendet
-backbone: efficientnet
+backbone: mobilenetv2
 
 # Default Support Variant
-#variant: efficientnet_b0
-#variant: efficientnet_b1
-#variant: efficientnet_b2
-#variant: efficientnet_b2a
-#variant: efficientnet_b3
-#variant: efficientnet_b3a
-#variant: efficientnet_b4
-#variant: efficientnet_b5
-#variant: efficientnet_b6
-#variant: efficientnet_b7
-#variant: efficientnet_b8
-#variant: efficientnet_lite0
-variant: efficientnet_lite1
-#variant: efficientnet_lite2
-#variant: efficientnet_lite3
-#variant: efficientnet_lite4
-#variant: efficientnet_
+#variant: mobilenetv2_torchvision
+variant: mobilenetv2_100
+#variant: mobilenetv2_110d
+#variant: mobilenetv2_120d
+#variant: mobilenetv2_140
 
 # Specifical Build Config
 #build_config: {}
@@ -32,8 +20,8 @@ backbone_config: {
 #neck: panet-fpn
 neck: bifpn
 neck_config: {
-    features_num: 64,
-    #features_num: 128,
+    #features_num: 64,
+    features_num: 128,
     #features_num: 256,
     bifpn_repeats: 1,
     bifpn_attention: False,

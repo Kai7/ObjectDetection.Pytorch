@@ -761,6 +761,7 @@ class Resizer(object):
         else: 
             image = sample
         rows, cols, cns = image.shape
+        # print(image.shape)
 
         if self.resize_mode == 0:
             smallest_side = min(rows, cols)
@@ -870,11 +871,58 @@ class Resizer(object):
 
 class Augmenter(object):
     """Convert ndarrays in sample to Tensors."""
+    def __init__(self, use_flip = True, flip_theta=0.5, 
+                       use_noise = True, noise_theta=0.8, noise_range=2.0/255.0,
+                       use_brightness = True, brightness_theta=0.2, brightness_range=0.05, 
+                       use_scale = True, scale_theta=0.5, scale_max=1.0, scale_min=0.8, scale_stride=0.05,
+                       **kwargs):
+        self.use_flip = use_flip
+        self.flip_theta = flip_theta
 
-    def __call__(self, sample, flip_x=0.5):
+        self.use_noise = use_noise
+        self.noise_theta = noise_theta
+        self.noise_range = noise_range
 
-        if np.random.rand() < flip_x:
-            image, annots = sample['img'], sample['annot']
+        self.use_brightness = use_brightness
+        self.brightness_theta = brightness_theta
+        self.brightness_range = brightness_range
+
+        self.use_scale = use_scale
+        self.scale_theta = scale_theta
+        self.scale_max = scale_max
+        self.scale_min = scale_min
+        self.scale_stride = scale_stride
+        self.scale_candidate = [scale_min,]
+        s_min = scale_min
+        while True:
+            s_min += scale_stride
+            if s_min <= scale_max:
+                self.scale_candidate.append(s_min)
+            else:
+                break
+        if scale_max not in self.scale_candidate:
+            self.scale_candidate.append(scale_max)
+        # print(self.scale_candidate)
+        if 'logger' in kwargs:
+            if self.use_flip:
+                kwargs['logger'].info('Augmenter.Flip_Theta   : {}'.format(self.flip_theta))
+            if self.use_noise:
+                kwargs['logger'].info('Augmenter.Noise_Theta  : {}'.format(self.noise_theta))
+                kwargs['logger'].info('Augmenter.Noise_Range  : {}'.format(self.noise_range))
+            if self.use_brightness:
+                kwargs['logger'].info('Augmenter.Brightness_Theta : {}'.format(self.brightness_theta))
+                kwargs['logger'].info('Augmenter.Brightness_Range : {}'.format(self.brightness_range))
+            if self.use_scale:
+                kwargs['logger'].info('Augmenter.Scale_Theta  : {}'.format(self.scale_theta))
+                kwargs['logger'].info('Augmenter.Scale_Max    : {}'.format(self.scale_max))
+                kwargs['logger'].info('Augmenter.Scale_Min    : {}'.format(self.scale_min))
+                kwargs['logger'].info('Augmenter.Scale_Stride : {}'.format(self.scale_stride))
+                kwargs['logger'].info('Augmenter.Scale_Candidate : [ {} ] '.format(
+                                       ', '.join(['{:.2f}'.format(s) for s in self.scale_candidate])))
+
+    def __call__(self, sample):
+        image, annots = sample['img'], sample['annot']
+        if self.use_flip and np.random.rand() < self.flip_theta:
             image = image[:, ::-1, :]
 
             rows, cols, channels = image.shape
@@ -887,7 +935,31 @@ class Augmenter(object):
             annots[:, 0] = cols - x2
             annots[:, 2] = cols - x_tmp
 
-            sample = {'img': image, 'annot': annots}
+        if self.use_noise and np.random.rand() < self.noise_theta:
+            row, col, ch = image.shape
+            noise = np.random.uniform(-self.noise_range, self.noise_range, (row, col, 1))
+            noise = np.concatenate((noise, noise, noise), axis=2)
+            #image = image + np.random.uniform(-self.noise_range, self.noise_range, (row, col, ch))
+            image = image + noise 
+            image = np.clip(image, 0.0, 1.0)
+            #gauss = np.random.normal(mean,sigma,(row,col,ch))
+            #gauss = gauss.reshape(row,col,ch)
+
+        if self.use_brightness and np.random.rand() < self.brightness_theta:
+            image = image * np.random.uniform(1 - self.brightness_range, 1 + self.brightness_range)
+            image = np.clip(image, 0.0, 1.0)
+        
+        if self.use_scale and np.random.rand() < self.scale_theta:
+            random_scale = random.sample(self.scale_candidate, 1)[0]
+            row, col, _ = image.shape
+            image_scale = skimage.transform.resize(image, (int(round(row*random_scale)), int(round((col*random_scale)))))
+            image = np.zeros((row, col, _)).astype(np.float32)
+            row, col, _ = image_scale.shape
+            image[:row, :col, :] = image_scale.astype(np.float32)
+
+            annots = annots * random_scale
+
+        sample = {'img': image, 'annot': annots}
 
         return sample
 
@@ -895,6 +967,7 @@ class Augmenter(object):
 class Normalizer(object):
 
     def __init__(self, inference_mode=False):
+        # ImageNet Setting
         self.mean = np.array([[[0.485, 0.456, 0.406]]])
         self.std  = np.array([[[0.229, 0.224, 0.225]]])
         self.inference_mode = inference_mode
