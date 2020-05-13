@@ -255,12 +255,13 @@ class PANetFPN(nn.Module):
             fpn_output_blobs.insert(0, self.extra_pyramid_modules[0](blob_in))
             for module in self.extra_pyramid_modules[1:]:
                 fpn_output_blobs.insert(0, module(F.relu(fpn_output_blobs[0], inplace=True)))
+                # fpn_output_blobs.insert(0, module(F.relu(fpn_output_blobs[0], inplace=False)))
         
         # print('new fpn')
         # for x_feature in fpn_output_blobs:
         #     print(x_feature.shape)
         # exit(0)
-        return fpn_output_blobs
+        return fpn_output_blobs[::-1]
 
 
 class topdown_lateral_module(nn.Module):
