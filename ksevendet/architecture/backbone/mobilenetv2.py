@@ -1,26 +1,49 @@
 """
-  Modified by KaiSeven Yang
-    source from: torchvision.models.mobilenet.py
+Creates a MobileNetV2 Model as defined in:
+Mark Sandler, Andrew Howard, Menglong Zhu, Andrey Zhmoginov, Liang-Chieh Chen. (2018). 
+MobileNetV2: Inverted Residuals and Linear Bottlenecks
+arXiv preprint arXiv:1801.04381.
+import from https://github.com/tonylins/pytorch-mobilenet-v2
 """
 
-from torch import nn
-# from .utils import load_state_dict_from_url
+import torch.nn as nn
+import math
+# from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+from ksevendet.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from .registry import register_model
 from .helpers import load_pretrained
+from .feature_hooks import FeatureHooks
+from collections import OrderedDict
+# from .adaptive_avgmax_pool import SelectAdaptivePool2d
+from .layers.adaptive_avgmax_pool import SelectAdaptivePool2d
 
+__all__ = ['MobileNetV2', 'MobileNetV2Features']
 
-__all__ = ['MobileNetV2', 'MobileNetV2Features', 'mobilenetv2_torchvision']
-
-def _cfg(url=''):
+def _cfg(url='', **kwargs):
     return {
-        'url': url, 
+        'url': url,
+        'num_classes': 1000, 'input_size': (3, 224, 224), 'pool_size': (7, 7),
+        'crop_pct': 0.875, 'interpolation': 'bilinear',
+        'mean': IMAGENET_DEFAULT_MEAN, 'std': IMAGENET_DEFAULT_STD,
+        'first_conv': 'conv0', 'classifier': 'classifier',
+        **kwargs
     }
 
-
 default_cfgs = {
-    'mobilenetv2': _cfg(url='https://download.pytorch.org/models/mobilenet_v2-b0353104.pth'),
+    'mobilenetv2_200': _cfg(url=''),
+    'mobilenetv2_140': _cfg(url=''),
+    'mobilenetv2_100': _cfg(url='https://github.com/d-li14/mobilenetv2.pytorch/raw/master/pretrained/mobilenetv2_1.0-0c6065bc.pth'),
+    'mobilenetv2_75': _cfg(
+        url='https://raw.githubusercontent.com/d-li14/mobilenetv2.pytorch/master/pretrained/mobilenetv2_0.75-dace9791.pth'),
+    'mobilenetv2_50': _cfg(
+        url='https://raw.githubusercontent.com/d-li14/mobilenetv2.pytorch/master/pretrained/mobilenetv2_0.5-eaa6f9ad.pth'),
+    'mobilenetv2_35': _cfg(
+        url='https://raw.githubusercontent.com/d-li14/mobilenetv2.pytorch/master/pretrained/mobilenetv2_0.35-b2e15951.pth'),
+    'mobilenetv2_25': _cfg(
+        url='https://raw.githubusercontent.com/d-li14/mobilenetv2.pytorch/master/pretrained/mobilenetv2_0.25-b61d2159.pth'),
+    'mobilenetv2_10': _cfg(
+        url='https://raw.githubusercontent.com/d-li14/mobilenetv2.pytorch/master/pretrained/mobilenetv2_0.1-7d1d638a.pth'),
 }
-
 
 def _make_divisible(v, divisor, min_value=None):
     """
@@ -42,217 +65,221 @@ def _make_divisible(v, divisor, min_value=None):
     return new_v
 
 
-class ConvBNReLU(nn.Sequential):
-    def __init__(self, in_planes, out_planes, kernel_size=3, stride=1, groups=1):
-        padding = (kernel_size - 1) // 2
-        super(ConvBNReLU, self).__init__(
-            nn.Conv2d(in_planes, out_planes, kernel_size, stride, padding, groups=groups, bias=False),
-            nn.BatchNorm2d(out_planes),
-            nn.ReLU6(inplace=True)
-        )
+def conv_3x3_bn(inp, oup, stride):
+    return nn.Sequential(
+        nn.Conv2d(inp, oup, 3, stride, 1, bias=False),
+        nn.BatchNorm2d(oup),
+        nn.ReLU6(inplace=True)
+    )
+
+
+def conv_1x1_bn(inp, oup):
+    return nn.Sequential(
+        nn.Conv2d(inp, oup, 1, 1, 0, bias=False),
+        nn.BatchNorm2d(oup),
+        nn.ReLU6(inplace=True)
+    )
 
 
 class InvertedResidual(nn.Module):
     def __init__(self, inp, oup, stride, expand_ratio):
         super(InvertedResidual, self).__init__()
-        self.stride = stride
         assert stride in [1, 2]
 
-        hidden_dim = int(round(inp * expand_ratio))
-        self.use_res_connect = self.stride == 1 and inp == oup
+        hidden_dim = round(inp * expand_ratio)
+        self.identity = stride == 1 and inp == oup
 
-        layers = []
-        if expand_ratio != 1:
-            # pw
-            layers.append(ConvBNReLU(inp, hidden_dim, kernel_size=1))
-        layers.extend([
-            # dw
-            ConvBNReLU(hidden_dim, hidden_dim, stride=stride, groups=hidden_dim),
-            # pw-linear
-            nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
-            nn.BatchNorm2d(oup),
-        ])
-        self.conv = nn.Sequential(*layers)
+        if expand_ratio == 1:
+            self.conv = nn.Sequential(
+                # dw
+                nn.Conv2d(hidden_dim, hidden_dim, 3, stride, 1, groups=hidden_dim, bias=False),
+                nn.BatchNorm2d(hidden_dim),
+                nn.ReLU6(inplace=True),
+                # pw-linear
+                nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
+                nn.BatchNorm2d(oup),
+            )
+        else:
+            self.conv = nn.Sequential(
+                # pw
+                nn.Conv2d(inp, hidden_dim, 1, 1, 0, bias=False),
+                nn.BatchNorm2d(hidden_dim),
+                nn.ReLU6(inplace=True),
+                # dw
+                nn.Conv2d(hidden_dim, hidden_dim, 3, stride, 1, groups=hidden_dim, bias=False),
+                nn.BatchNorm2d(hidden_dim),
+                nn.ReLU6(inplace=True),
+                # pw-linear
+                nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
+                nn.BatchNorm2d(oup),
+            )
 
     def forward(self, x):
-        if self.use_res_connect:
+        if self.identity:
             return x + self.conv(x)
         else:
             return self.conv(x)
 
 
 class MobileNetV2(nn.Module):
-    def __init__(self,
-                 num_classes=1000,
-                 width_mult=1.0,
-                 inverted_residual_setting=None,
-                 round_nearest=8,
-                 block=None):
-        """
-        MobileNet V2 main class
-
-        Args:
-            num_classes (int): Number of classes
-            width_mult (float): Width multiplier - adjusts number of channels in each layer by this amount
-            inverted_residual_setting: Network structure
-            round_nearest (int): Round the number of channels in each layer to be a multiple of this number
-            Set to 1 to turn off rounding
-            block: Module specifying inverted residual building block for mobilenet
-
-        """
+    def __init__(self, num_classes=1000, width_mult=1., in_chans=3, out_features=[], drop_rate=0., drop_connect_rate=0., global_pool='avg'):
         super(MobileNetV2, self).__init__()
-
-        if block is None:
-            block = InvertedResidual
-        input_channel = 32
-        last_channel = 1280
-
-        if inverted_residual_setting is None:
-            inverted_residual_setting = [
-                # t, c, n, s
-                [1, 16, 1, 1],
-                [6, 24, 2, 2],
-                [6, 32, 3, 2],
-                [6, 64, 4, 2],
-                [6, 96, 3, 1],
-                [6, 160, 3, 2],
-                [6, 320, 1, 1],
-            ]
-
-        # only check the first element, assuming user knows t,c,n,s are required
-        if len(inverted_residual_setting) == 0 or len(inverted_residual_setting[0]) != 4:
-            raise ValueError("inverted_residual_setting should be non-empty "
-                             "or a 4-element list, got {}".format(inverted_residual_setting))
+        self.width_mult = width_mult
+        # setting of inverted residual blocks
+        self.cfgs = [
+            # t, c, n, s
+            [1,  16, 1, 1],
+            [6,  24, 2, 2],
+            [6,  32, 3, 2],
+            [6,  64, 4, 2],
+            [6,  96, 3, 1],
+            [6, 160, 3, 2],
+            [6, 320, 1, 1],
+        ]
 
         # building first layer
-        input_channel = _make_divisible(input_channel * width_mult, round_nearest)
-        self.last_channel = _make_divisible(last_channel * max(1.0, width_mult), round_nearest)
-        features = [ConvBNReLU(3, input_channel, stride=2)]
+        input_channel = _make_divisible(32 * width_mult, 4 if width_mult == 0.1 else 8)
+        layers = [conv_3x3_bn(in_chans, input_channel, 2)]
         # building inverted residual blocks
-        for t, c, n, s in inverted_residual_setting:
-            output_channel = _make_divisible(c * width_mult, round_nearest)
+        block = InvertedResidual
+        for t, c, n, s in self.cfgs:
+            output_channel = _make_divisible(c * width_mult, 4 if width_mult == 0.1 else 8)
             for i in range(n):
-                stride = s if i == 0 else 1
-                features.append(block(input_channel, output_channel, stride, expand_ratio=t))
+                layers.append(block(input_channel, output_channel, s if i == 0 else 1, t))
                 input_channel = output_channel
-        # building last several layers
-        features.append(ConvBNReLU(input_channel, self.last_channel, kernel_size=1))
-        # make it nn.Sequential
-        self.features = nn.Sequential(*features)
+                
+        self.features = nn.Sequential(*layers)
+        self.out_features = out_features
 
-        # building classifier
-        self.classifier = nn.Sequential(
-            nn.Dropout(0.2),
-            nn.Linear(self.last_channel, num_classes),
-        )
+        if len(self.out_features) <= 0:
+            # building classifier layers
+            output_channel = _make_divisible(1280 * width_mult, 4 if width_mult == 0.1 else 8) if width_mult > 1.0 else 1280
+            self.conv = conv_1x1_bn(input_channel, output_channel)
+            self.global_pool = SelectAdaptivePool2d(pool_type=global_pool)
+            self.classifier = nn.Linear(output_channel, num_classes)
+            self.features_only = False
+        else:
+            # ignore classifier layer and hook necessary features
+            self.features_only = True
+            hooks = [dict(name=feature_name, type="forward") for feature_name in self.out_features]
+            self.feature_hooks = FeatureHooks(hooks, self.named_modules())
 
-        # weight initialization
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out')
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.ones_(m.weight)
-                nn.init.zeros_(m.bias)
-            elif isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, 0, 0.01)
-                nn.init.zeros_(m.bias)
+        self._initialize_weights()
 
-    def _forward_impl(self, x):
-        # This exists since TorchScript doesn't support inheritance, so the superclass method
-        # (this one) needs to have a name other than `forward` that can be accessed in a subclass
-        x = self.features(x)
-        x = x.mean([2, 3])
-        x = self.classifier(x)
-        return x
+    def get_classifier(self):
+        return self.classifier
+
+    def reset_classifier(self, num_classes, global_pool='avg'):
+        del self.classifier
+        del self.global_pool
+        self.num_classes = num_classes
+        # self.global_pool = SelectAdaptivePool2d(pool_type=global_pool)
+        self.global_pool = nn.AdaptiveAvgPool2d(1)
+        output_channel = _make_divisible(1280 * self.width_mult, 4 if self.width_mult == 0.1 else 8) if self.width_mult > 1.0 else 1280
+        self.classifier = nn.Linear(output_channel, num_classes)
+        self.classifier.weight.data.normal_(0, 0.01)
+        self.classifier.bias.data.zero_()
+
 
     def forward(self, x):
-        return self._forward_impl(x)
+        x = self.features(x)
+        if self.features_only:
+            ret = OrderedDict()
+            outputs = self.feature_hooks.get_output(x.device)[::-1]
+            for feat_name in self.out_features:
+                ret[feat_name] = outputs[self.out_features.index(feat_name)]
+            return ret
+        else:
+            x = self.conv(x)
+            x = self.global_pool(x)
+            x = x.view(-1, 1280)
+            x = self.classifier(x)
+            return x
 
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.Linear):
+                m.weight.data.normal_(0, 0.01)
+                m.bias.data.zero_()
 
 class MobileNetV2Features(nn.Module):
-    def __init__(self,
-                 width_mult=1.0,
-                 inverted_residual_setting=None,
-                 round_nearest=8,
-                 block=None, **kwargs):
-        """
-        MobileNet V2 main class
-
-        Args:
-            num_classes (int): Number of classes
-            width_mult (float): Width multiplier - adjusts number of channels in each layer by this amount
-            inverted_residual_setting: Network structure
-            round_nearest (int): Round the number of channels in each layer to be a multiple of this number
-            Set to 1 to turn off rounding
-            block: Module specifying inverted residual building block for mobilenet
-
-        """
+    def __init__(self, width_mult=1., in_chans=3, out_features=[], drop_rate=0., drop_connect_rate=0., global_pool='avg',
+                 **kwargs):
         super(MobileNetV2Features, self).__init__()
+        logger = kwargs.get('logger', None)
+        if logger:
+            logger.info('==== Build Backbone ======================')
+            logger.info('Backbone   : {}'.format('mobilenetv2'))
+            logger.info('Width Mult : {}'.format(width_mult))
 
-        if block is None:
-            block = InvertedResidual
-        input_channel = 32
-        last_channel = 1280
-
-        if inverted_residual_setting is None:
-            inverted_residual_setting = [
-                # t, c, n, s
-                [1, 16, 1, 1],
-                [6, 24, 2, 2],
-                [6, 32, 3, 2],
-                [6, 64, 4, 2],
-                [6, 96, 3, 1],
-                [6, 160, 3, 2],
-                [6, 320, 1, 1],
-            ]
-
-        # only check the first element, assuming user knows t,c,n,s are required
-        if len(inverted_residual_setting) == 0 or len(inverted_residual_setting[0]) != 4:
-            raise ValueError("inverted_residual_setting should be non-empty "
-                             "or a 4-element list, got {}".format(inverted_residual_setting))
+        self.width_mult = width_mult
+        # setting of inverted residual blocks
+        self.cfgs = [
+            # t, c, n, s
+            [1,  16, 1, 1],
+            [6,  24, 2, 2],
+            [6,  32, 3, 2],
+            [6,  64, 4, 2],
+            [6,  96, 3, 1],
+            [6, 160, 3, 2],
+            [6, 320, 1, 1],
+        ]
 
         # building first layer
-        input_channel = _make_divisible(input_channel * width_mult, round_nearest)
-        self.last_channel = _make_divisible(last_channel * max(1.0, width_mult), round_nearest)
-        # features = [ConvBNReLU(3, input_channel, stride=2)]
-        self.stem = ConvBNReLU(3, input_channel, stride=2)
+        input_channel = _make_divisible(32 * width_mult, 4 if width_mult == 0.1 else 8)
+        # layers = [conv_3x3_bn(in_chans, input_channel, 2)]
+        self.stem = conv_3x3_bn(in_chans, input_channel, 2)
         self.feature_blocks = nn.ModuleList()
         # building inverted residual blocks
-        for t, c, n, s in inverted_residual_setting:
-            output_channel = _make_divisible(c * width_mult, round_nearest)
-            _blocks = list()
+        block = InvertedResidual
+        RETURN_IDXES = [2, 4, 6]
+        _feature_map_channels = list()
+        for i, (t, c, n, s) in enumerate(self.cfgs):
+            output_channel = _make_divisible(c * width_mult, 4 if width_mult == 0.1 else 8)
+            if i in RETURN_IDXES:
+                _feature_map_channels.append(output_channel)
+            blocks_ = list()
             for i in range(n):
-                stride = s if i == 0 else 1
-                _blocks.append(block(input_channel, output_channel, stride, expand_ratio=t))
+                # layers.append(block(input_channel, output_channel, s if i == 0 else 1, t))
+                blocks_.append(block(input_channel, output_channel, s if i == 0 else 1, t))
                 input_channel = output_channel
-            self.feature_blocks.append(nn.Sequential(*_blocks))
-        # building last several layers
-        # self.final_conv = ConvBNReLU(input_channel, self.last_channel, kernel_size=1)
+            self.feature_blocks.append(nn.Sequential(*blocks_))
 
-        _feature_map_channels = [32, 96, 320]
+        # _feature_map_channels = [32, 96, 320]
         self.features_num = dict()
         for i in range(len(_feature_map_channels)):
             self.features_num[f'c{i+3}'] = _feature_map_channels[i]
         self.out_indices = [f'c{idx}' for idx in [3, 4, 5]]
-    
-    def feature_channels(self):
-        return [self.features_num[idx] for idx in self.out_indices]
 
-    def init_weights(self):
-        # weight initialization
+        self._initialize_weights(logger=logger)
+
+    def _initialize_weights(self, logger=None):
+        if logger:
+            logger.info('Initializing weights for MobileNetV2 ...')
+
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out')
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
                 if m.bias is not None:
-                    nn.init.zeros_(m.bias)
+                    m.bias.data.zero_()
             elif isinstance(m, nn.BatchNorm2d):
-                nn.init.ones_(m.weight)
-                nn.init.zeros_(m.bias)
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
             elif isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, 0, 0.01)
-                nn.init.zeros_(m.bias)
+                m.weight.data.normal_(0, 0.01)
+                m.bias.data.zero_()
+
+    def feature_channels(self):
+        return [self.features_num[idx] for idx in self.out_indices]
 
     def forward(self, x):
         # print(f'Input Shape : {str(x.shape)}')
@@ -272,74 +299,82 @@ class MobileNetV2Features(nn.Module):
         return feature_maps
 
 
-# @register_model
-# def densenet121(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-#     r"""Densenet-121 model from
-#     `"Densely Connected Convolutional Networks" <https://arxiv.org/pdf/1608.06993.pdf>`
-#     """
-#     default_cfg = default_cfgs['densenet121']
-#     if kwargs.pop('features_only', False):
-#         model = DenseNetFeatures(num_init_features=64, growth_rate=32, block_config=(6, 12, 24, 16),
-#                                  in_chans=in_chans, **kwargs)
-#     else:
-#         model = DenseNet(num_init_features=64, growth_rate=32, block_config=(6, 12, 24, 16),
-#                          num_classes=num_classes, in_chans=in_chans, **kwargs)
-#     model.default_cfg = default_cfg
-#     if pretrained:
-#         load_pretrained(model, default_cfg, num_classes, in_chans, filter_fn=_filter_pretrained)
-#     return model
+def _create_model(variant, width_mult, pretrained, **kwargs):
+    #model.default_cfg = default_cfgs[variant]
+    #model = MobileNetV2(width_mult=width_mult, **kwargs)
 
-@register_model
-def mobilenetv2_torchvision(pretrained=False, progress=True, **kwargs):
-    """
-    Constructs a MobileNetV2 architecture from
-    `"MobileNetV2: Inverted Residuals and Linear Bottlenecks" <https://arxiv.org/abs/1801.04381>`_.
-
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-        progress (bool): If True, displays a progress bar of the download to stderr
-    """
-    default_cfg = default_cfgs['mobilenetv2']
+    default_cfg = default_cfgs[variant]
     if kwargs.pop('features_only', False):
-        model = MobileNetV2Features(**kwargs)
+        model = MobileNetV2Features(width_mult=width_mult, **kwargs)
     else:
-        model = MobileNetV2(**kwargs)
+        model = MobileNetV2(width_mult=width_mult, **kwargs)
     model.default_cfg = default_cfg
+
     if pretrained:
-        load_pretrained(model, default_cfg, num_classes, in_chans, filter_fn=_filter_pretrained)
+        model_kwargs = dict(
+            **kwargs
+        )
+        load_pretrained(
+            model,
+            model.default_cfg,
+            num_classes=model_kwargs.get('num_classes', 0),
+            strict=not model.features_only)
     return model
-
-
-# ---------------------------------------------------------------------------- #
-# Build function from efficientnet.py
-# ---------------------------------------------------------------------------- #
-from .efficientnet import _gen_mobilenet_v2
 
 @register_model
-def mobilenetv2_100(pretrained=False, **kwargs):
-    """ MobileNet V2 w/ 1.0 channel multiplier """
-    model = _gen_mobilenet_v2('mobilenetv2_100', 1.0, pretrained=pretrained, **kwargs)
-    return model
-
+def mobilenetv2_200(pretrained=False, **kwargs):
+    """
+    Constructs a MobileNet V2 model
+    """
+    return _create_model('mobilenetv2_200', 1.4, pretrained, **kwargs)
 
 @register_model
 def mobilenetv2_140(pretrained=False, **kwargs):
-    """ MobileNet V2 w/ 1.4 channel multiplier """
-    model = _gen_mobilenet_v2('mobilenetv2_140', 1.4, pretrained=pretrained, **kwargs)
-    return model
+    """
+    Constructs a MobileNet V2 model
+    """
+    return _create_model('mobilenetv2_140', 1.4, pretrained, **kwargs)
+
+@register_model
+def mobilenetv2_100(pretrained=False, **kwargs):
+    """
+    Constructs a MobileNet V2 model
+    """
+    print('----')
+    return _create_model('mobilenetv2_100', 1.0, pretrained, **kwargs)
+
+@register_model
+def mobilenetv2_75(pretrained=False, **kwargs):
+    """
+    Constructs a MobileNet V2 model
+    """
+    return _create_model('mobilenetv2_75', 0.75, pretrained, **kwargs)
+
+@register_model
+def mobilenetv2_50(pretrained=False, **kwargs):
+    """
+    Constructs a MobileNet V2 model
+    """
+    return _create_model('mobilenetv2_50', 0.5, pretrained, **kwargs)
+
+@register_model
+def mobilenetv2_35(pretrained=False, **kwargs):
+    """
+    Constructs a MobileNet V2 model
+    """
+    return _create_model('mobilenetv2_35', 0.35, pretrained, **kwargs)
+
+@register_model
+def mobilenetv2_25(pretrained=False, **kwargs):
+    """
+    Constructs a MobileNet V2 model
+    """
+    return _create_model('mobilenetv2_25', 0.25, pretrained, **kwargs)
 
 
 @register_model
-def mobilenetv2_110d(pretrained=False, **kwargs):
-    """ MobileNet V2 w/ 1.1 channel, 1.2 depth multipliers"""
-    model = _gen_mobilenet_v2(
-        'mobilenetv2_110d', 1.1, depth_multiplier=1.2, fix_stem_head=True, pretrained=pretrained, **kwargs)
-    return model
-
-
-@register_model
-def mobilenetv2_120d(pretrained=False, **kwargs):
-    """ MobileNet V2 w/ 1.2 channel, 1.4 depth multipliers """
-    model = _gen_mobilenet_v2(
-        'mobilenetv2_120d', 1.2, depth_multiplier=1.4, fix_stem_head=True, pretrained=pretrained, **kwargs)
-    return model
+def mobilenetv2_10(pretrained=False, **kwargs):
+    """
+    Constructs a MobileNet V2 model
+    """
+    return _create_model('mobilenetv2_10', 0.1, pretrained, **kwargs)

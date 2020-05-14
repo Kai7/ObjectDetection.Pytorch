@@ -95,6 +95,7 @@ class Regressor(nn.Module):
             logger.info(f'==== Build Head Layer ====================')
             logger.info(f'Head Type    : Regression ({head_type} + {act_type})')
             logger.info(f'Features Num : {features_num}')
+            logger.info(f'Anchors Num  : {num_anchors}')
             logger.info(f'Layers Num   : {layers_num}')
 
         _conv_block = SeparableConvBlock if head_type == 'efficient' else nn.Conv2d
@@ -115,6 +116,22 @@ class Regressor(nn.Module):
             self.act_fn = MemoryEfficientSwish() if not onnx_export else Swish()
         else:
             self.act_fn = nn.ReLU()
+
+        self._initialize_weights(logger=logger)
+
+    def _initialize_weights(self, logger=None):
+        if logger:
+            logger.info('Initializing weights for Regressor...')
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
     def forward(self, inputs):
         feats = []
@@ -155,6 +172,7 @@ class Classifier(nn.Module):
             logger.info(f'==== Build Head Layer ====================')
             logger.info(f'Head Type    : Classification ({head_type} + {act_type})')
             logger.info(f'Features Num : {features_num}')
+            logger.info(f'Anchors Num  : {num_anchors}')
             logger.info(f'Layers Num   : {layers_num}')
 
         _conv_block = SeparableConvBlock if head_type == 'efficient' else nn.Conv2d
@@ -177,6 +195,22 @@ class Classifier(nn.Module):
             self.act_fn = nn.ReLU()
         
         self.header_act = nn.Sigmoid()
+
+        self._initialize_weights(logger=logger)
+
+    def _initialize_weights(self, logger=None):
+        if logger:
+            logger.info('Initializing weights for Classifier...')
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
     def forward(self, inputs):
         feats = []
@@ -221,6 +255,19 @@ class RegressorV1(nn.Module):
              range(num_pyramid_levels)])
         self.header = SeparableConvBlock(in_features_num, num_anchors * 4, norm=False, activation=False)
         self.swish = MemoryEfficientSwish() if not onnx_export else Swish()
+
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
     def forward(self, inputs):
         feats = []

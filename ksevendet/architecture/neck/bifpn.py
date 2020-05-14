@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch
 #from torchvision.ops.boxes import nms as nms_torch
 from torchvision.ops import nms
+import math
 
 from architectures.efficientnet import EfficientNet as EffNet
 from architectures.utils_efficientnet import MemoryEfficientSwish, Swish
@@ -127,6 +128,21 @@ class BiFPN(nn.Module):
             self.p7_w2 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
             self.p7_w2_relu = nn.ReLU()
 
+        self._initialize_weights(logger=logger)
+
+    def _initialize_weights(self, logger=None):
+        if logger:
+            logger.info('Initializing weights for BiFPN ...')
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
     def forward(self, inputs):
         """

@@ -17,9 +17,13 @@ class Anchors(nn.Module):
 
         # print('Anchors Sizes =', self.sizes)
         if 'logger' in kwargs:
-            kwargs['logger'].info('Anchors Sizes   : {}'.format(str(self.sizes)))
-            kwargs['logger'].info('Anchors Scales  : {}'.format(str(self.scales)))
-            kwargs['logger'].info('Anchors Ratios  : {}'.format(str(self.ratios)))
+            kwargs['logger'].info('Anchors Sizes   : [ {} ]'.format(
+                                  ', '.join(['{:>4}'.format(int(ss)) for ss in self.sizes])))
+            kwargs['logger'].info('Anchors Scales  : [ {} ]'.format(
+                                  ', '.join(['{:>2.2f}'.format(ss) for ss in self.scales])))
+            kwargs['logger'].info('Anchors Ratios  : [ {} ]'.format(
+                                  ', '.join(['{:>2.2f}'.format(rr) for rr in self.ratios])))
+            kwargs['logger'].info('Anchors Num     : {}'.format(len(self.ratios) * len(self.scales)))
             for idx in range(len(self.sizes)):
                 anchors = generate_anchors(base_size=self.sizes[idx], ratios=self.ratios, scales=self.scales, get_sample=True)
                 anchors_info = list()

@@ -5,6 +5,7 @@
 
 import torch
 import torch.nn as nn
+import math
 from .registry import register_model
 from .helpers import load_pretrained
 # from .utils import load_state_dict_from_url
@@ -156,6 +157,13 @@ class ShuffleNetV2Features(nn.Module):
             raise ValueError('expected stages_repeats as list of 3 positive ints')
         if len(stages_out_channels) != 5:
             raise ValueError('expected stages_out_channels as list of 5 positive ints')
+        logger = kwargs.get('logger', None)
+        if logger:
+            logger.info('==== Build Backbone ======================')
+            logger.info('Backbone   : {}'.format('shufflenetv2'))
+            logger.info('Stages Repeats      : {}'.format(str(stages_repeats)))
+            logger.info('Stages Out Channels : {}'.format(str(stages_out_channels)))
+
         self._stage_out_channels = stages_out_channels
 
         input_channels = 3
@@ -190,6 +198,24 @@ class ShuffleNetV2Features(nn.Module):
         for i in range(1, len(stages_out_channels)-1):
             self.features_num[f'c{i+2}'] = stages_out_channels[i]
         self.out_indices = [f'c{idx}' for idx in [3, 4, 5]]
+        self._initialize_weights(logger=logger)
+
+    def _initialize_weights(self, logger=None):
+        if logger:
+            logger.info('Initializing weights for ShuffleNetV2 ...')
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.Linear):
+                m.weight.data.normal_(0, 0.01)
+                m.bias.data.zero_()
 
     def feature_channels(self):
         return [self.features_num[idx] for idx in self.out_indices]

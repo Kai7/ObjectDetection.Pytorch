@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
 # from mmcv.cnn import xavier_init
 # from mmdet.core import auto_fp16
@@ -191,6 +192,21 @@ class PANetFPN(nn.Module):
                 dim_in = self.features_num
 
         # self._init_weights()
+        self._initialize_weights(logger=logger)
+
+    def _initialize_weights(self, logger=None):
+        if logger:
+            logger.info('Initializing weights for PANetFPN ...')
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
     def _init_weights(self):
         def init_func(m):
