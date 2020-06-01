@@ -9,7 +9,7 @@ from .registry import register_model
 from .helpers import load_pretrained
 
 
-__all__ = ['MobileNetV2', 'MobileNetV2Features', 'mobilenetv2_torchvision']
+__all__ = ['MobileNetV2', 'MobileNetV2Features']
 
 def _cfg(url=''):
     return {

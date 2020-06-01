@@ -75,6 +75,8 @@ def get_args():
                         help="Write log file.")
     parser.add_argument('--valid_period', default=5, type=int,
                         help='Batch size for training')
+    parser.add_argument("--validation_only", default=False, action="store_true" , 
+                        help="Only run validation.")
 
     args = parser.parse_args()
     if args.model_config:
@@ -110,6 +112,8 @@ def get_logger(name='My Logger', args=None):
 def test(dataset, model, epoch, args, logger=None):
     logger.info("{} epoch: \t start validation....".format(epoch))
     # model = model.module
+    if isinstance(model, torch.nn.DataParallel) or isinstance(model, CustomDataParallel):
+        model = model.module
     model.eval()
     model.is_training = False
     with torch.no_grad():
@@ -191,7 +195,8 @@ def main():
 
     _shape_1, _shape_2 = tuple(map(int, args.input_shape.split(',')))
     _normalizer = Normalizer()
-    _augmenter  = Augmenter(logger=net_logger)
+    #_augmenter  = Augmenter(scale_min=0.9, logger=net_logger)
+    _augmenter  = Augmenter(use_scale=False, scale_min=0.9, logger=net_logger)
     # exit(0)
     if args.resize_mode == 0:
         _resizer = Resizer(min_side=_shape_1, max_side=_shape_2, resize_mode=args.resize_mode, logger=net_logger)
@@ -258,7 +263,7 @@ def main():
     if args.resume is not None:
         net_logger.info('Loading Weights from Checkpoint : {}'.format(args.resume))
         try:
-            ret = net_model.load_state_dict(torch.load(weights_path), strict=False)
+            ret = net_model.load_state_dict(torch.load(args.resume), strict=False)
         except RuntimeError as e:
             net_logger.warning(f'Ignoring {e}')
             net_logger.warning(f'Don\'t panic if you see this, this might be because you load a pretrained weights with different number of classes. The rest of the weights should be loaded already.')
@@ -269,9 +274,9 @@ def main():
         net_logger.info('Continue on {} Epoch'.format(start_epoch))
     else:
         start_epoch = 1
-        print('[Info] initializing weights...')
+        # print('[Info] initializing weights...')
         # exit(0)
-        init_weights(net_model)
+        # init_weights(net_model)
         
     ## for EfficientDet 
     ## freeze backbone if train head_only
@@ -356,6 +361,11 @@ def main():
     #print('Done')
     #exit(0)
 
+    if args.validation_only:
+        net_model.eval()
+        test(dataset_valid, net_model, start_epoch - 1, args, net_logger)
+        print('Validation Done.')
+        exit(0)
 
     for epoch_num in range(start_epoch, start_epoch + args.epochs):
         net_model.train()
@@ -402,8 +412,11 @@ def main():
                 loss_hist.append(float(loss))
                 epoch_loss.append(float(loss))
 
-                if(iter_num % 10 == 0):
-                # if(iter_num % 100 == 0):
+                if epoch_num == 0 and (iter_num % 10 == 0):
+                    _log = 'Epoch: {:>3} | Iter: {:>4} | Class loss: {:1.5f} | BBox loss: {:1.5f} | Running loss: {:1.5f}'.format(
+                            epoch_num, iter_num, float(classification_loss), float(regression_loss), np.mean(loss_hist))
+                    net_logger.info(_log)
+                elif(iter_num % 100 == 0):
                     _log = 'Epoch: {:>3} | Iter: {:>4} | Class loss: {:1.5f} | BBox loss: {:1.5f} | Running loss: {:1.5f}'.format(
                             epoch_num, iter_num, float(classification_loss), float(regression_loss), np.mean(loss_hist))
                     net_logger.info(_log)

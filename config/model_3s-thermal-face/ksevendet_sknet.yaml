@@ -1,12 +1,12 @@
 architecture: ksevendet
-backbone: mobilenetv2
+backbone: sknet
 
 # Default Support Variant
-#variant: mobilenetv2_torchvision
-variant: mobilenetv2_100
-#variant: mobilenetv2_110d
-#variant: mobilenetv2_120d
-#variant: mobilenetv2_140
+variant: skresnet18
+#variant: skresnet34
+#variant: skresnet50
+#variant: skresnet50d
+#variant: skresnext50_32x4d
 
 # Specifical Build Config
 #build_config: {}
@@ -20,30 +20,21 @@ backbone_config: {
 #neck: panet-fpn
 neck: bifpn
 neck_config: {
-    #features_num: 64,
-    features_num: 128,
+    features_num: 64,
+    #features_num: 128,
     #features_num: 256,
     bifpn_repeats: 1,
     bifpn_attention: False,
 }
 
 head_config: {
-    #head_type:    'efficient',
+    head_type:    'efficient',
     #act_type:     'swish',
     features_num: 128,
     #features_num: 256,
     layers_num  : 3,
-
-    conv_kernel_size : 3,
-    conv_stride      : 1,
-    conv_padding     : 1,
 }
+
 
 backbone_feature_pyramid_levels : [3, 4, 5]
 neck_feature_pyramid_levels     : [3, 4, 5, 6, 7]
-
-anchors_config: {
-    sizes_mapper : 'lambda level: 2**(level + 2)'
-    ratios : [1, 2],
-    scales : '[2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)]',
-}

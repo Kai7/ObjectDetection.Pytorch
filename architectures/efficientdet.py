@@ -1,5 +1,7 @@
 import torch.nn as nn
 import torch
+import numpy as np
+import math
 #from torchvision.ops.boxes import nms as nms_torch
 from torchvision.ops import nms
 
@@ -434,6 +436,7 @@ class EfficientNet(nn.Module):
 class EfficientDet(nn.Module):
     def __init__(self, num_classes=80, compound_coef=0, load_weights=False, **kwargs):
         super(EfficientDet, self).__init__()
+        logger = kwargs.get('logger', None)
         self.compound_coef = compound_coef
 
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6]
@@ -455,8 +458,18 @@ class EfficientDet(nn.Module):
             6: [72, 200, 576],
             7: [72, 200, 576],
         }
+        my_pyramid_levels = [3, 4, 5, 6, 7]
+        my_strides = [2 ** x for x in my_pyramid_levels]
+        # my_sizes   = [2 ** (x + 2) for x in my_pyramid_levels]
+        #my_sizes   = [2 ** (x + 1) * 1.5 for x in my_pyramid_levels]
+        my_sizes   = [2 ** (x + 1) * 1.25 for x in my_pyramid_levels]
+        # my_ratios  = np.array([0.5, 1, 2])  # shape_0 / shape_1
+        my_ratios  = np.array([1, 2])  # shape_0 / shape_1
+        my_scales  = np.array([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)])
+        my_num_anchors = len(my_ratios) * len(my_scales)
 
-        num_anchors = len(self.aspect_ratios) * self.num_scales
+        #num_anchors = len(self.aspect_ratios) * self.num_scales
+        num_anchors = my_num_anchors
 
         self.bifpn = nn.Sequential(
             *[BiFPN(self.fpn_num_filters[self.compound_coef],
@@ -473,7 +486,13 @@ class EfficientDet(nn.Module):
                                      num_layers=self.box_class_repeats[self.compound_coef])
 
         # self.anchors = Anchors(anchor_scale=self.anchor_scale[compound_coef], **kwargs)
-        self.anchors = Anchors(**kwargs)
+        #self.anchors = Anchors(**kwargs)
+        self.anchors = Anchors(pyramid_levels=my_pyramid_levels,
+                               strides=my_strides,
+                               sizes=my_sizes,
+                               ratios=my_ratios,
+                               scales=my_scales,
+                               **kwargs)
 
         self.focalLoss = FocalLoss()
 
@@ -481,6 +500,25 @@ class EfficientDet(nn.Module):
         self.clipBoxes = ClipBoxes()
 
         self.backbone_net = EfficientNet(self.backbone_compound_coef[compound_coef], load_weights)
+
+        self._initialize_weights(logger=logger)
+
+    def _initialize_weights(self, logger=None):
+        if logger:
+            logger.info('Initializing weights for EfficientDet ...')
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.Linear):
+                m.weight.data.normal_(0, 0.01)
+                m.bias.data.zero_()
 
     def freeze_bn(self):
         for m in self.modules():

@@ -81,10 +81,19 @@ class Regressor(nn.Module):
     """
 
     def __init__(self, in_features_num, num_anchors=9, 
-                 features_num=256, layers_num=3, num_pyramid_levels=5, head_type='simple', act_type='relu', onnx_export=ONNX_EXPORT,
+                 features_num=256, layers_num=3, num_pyramid_levels=5, head_type='simple', act_type='relu', 
+                 conv_kernel_size=3, conv_stride=1, conv_padding=1, 
+                 onnx_export=ONNX_EXPORT,
                  **kwargs):
         assert head_type in ['simple', 'efficient']
         assert act_type in ['relu', 'swish']
+        #conv_kernel_size = (5, 3)
+        #conv_stride = 1
+        #conv_padding = (2, 1) 
+        if isinstance(conv_kernel_size, list):
+            conv_kernel_size = tuple(conv_kernel_size)
+        if isinstance(conv_padding, list):
+            conv_padding = tuple(conv_padding)
         super(Regressor, self).__init__()
         self.layers_num = layers_num
         self.num_pyramid_levels = num_pyramid_levels
@@ -97,9 +106,12 @@ class Regressor(nn.Module):
             logger.info(f'Features Num : {features_num}')
             logger.info(f'Anchors Num  : {num_anchors}')
             logger.info(f'Layers Num   : {layers_num}')
+            logger.info(f'Conv Kernel Size : {conv_kernel_size}')
+            logger.info(f'Conv Padding     : {conv_padding}')
+            logger.info(f'Conv Stride      : {conv_stride}')
 
         _conv_block = SeparableConvBlock if head_type == 'efficient' else nn.Conv2d
-        _conv_kwargs = {'kernel_size': 3, 'stride': 1, 'padding': 1}
+        _conv_kwargs = {'kernel_size': conv_kernel_size, 'stride': conv_stride, 'padding': conv_padding}
         if head_type == 'efficient':
             _conv_kwargs.update({'norm': False, 'activation': False})
         self.conv_list = nn.ModuleList(
@@ -158,10 +170,19 @@ class Classifier(nn.Module):
     """
 
     def __init__(self, in_features_num, num_anchors=9, num_classes=80, 
-                 features_num=256, layers_num=3, num_pyramid_levels=5, head_type='simple', act_type='relu', onnx_export=ONNX_EXPORT,
+                 features_num=256, layers_num=3, num_pyramid_levels=5, head_type='simple', act_type='relu', 
+                 conv_kernel_size=3, conv_stride=1, conv_padding=1, 
+                 onnx_export=ONNX_EXPORT,
                  **kwargs):
         assert head_type in ['simple', 'efficient']
         assert act_type in ['relu', 'swish']
+        #conv_kernel_size = (5, 3)
+        #conv_stride = 1
+        #conv_padding = (2, 1) 
+        if isinstance(conv_kernel_size, list):
+            conv_kernel_size = tuple(conv_kernel_size)
+        if isinstance(conv_padding, list):
+            conv_padding = tuple(conv_padding)
         super(Classifier, self).__init__()
         self.num_anchors = num_anchors
         self.num_classes = num_classes
@@ -174,9 +195,12 @@ class Classifier(nn.Module):
             logger.info(f'Features Num : {features_num}')
             logger.info(f'Anchors Num  : {num_anchors}')
             logger.info(f'Layers Num   : {layers_num}')
+            logger.info(f'Conv Kernel Size : {conv_kernel_size}')
+            logger.info(f'Conv Padding     : {conv_padding}')
+            logger.info(f'Conv Stride      : {conv_stride}')
 
         _conv_block = SeparableConvBlock if head_type == 'efficient' else nn.Conv2d
-        _conv_kwargs = {'kernel_size': 3, 'stride': 1, 'padding': 1}
+        _conv_kwargs = {'kernel_size': conv_kernel_size, 'stride': conv_stride, 'padding': conv_padding}
         if head_type == 'efficient':
             _conv_kwargs.update({'norm': False, 'activation': False})
         self.conv_list = nn.ModuleList(

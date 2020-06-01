@@ -85,7 +85,14 @@ ksevendet_cfg = {
 
 # net_model = mobilenetv2.mobilenetv2_torchvision(features_only=True)
 
-net_model = mobilenetv2.mobilenetv2_100(features_only=True)
+#net_model = mobilenetv2.mobilenetv2_10(features_only=True)
+#net_model = mobilenetv2.mobilenetv2_25(features_only=True)
+#net_model = mobilenetv2.mobilenetv2_35(features_only=True)
+#net_model = mobilenetv2.mobilenetv2_50(features_only=True)
+#net_model = mobilenetv2.mobilenetv2_75(features_only=True)
+# net_model = mobilenetv2.mobilenetv2_100(features_only=True)
+net_model = mobilenetv2.mobilenetv2_140(features_only=True)
+# net_model = mobilenetv2.mobilenetv2_200(features_only=True)
 # net_model = mobilenetv2.mobilenetv2_110d(features_only=True)
 # net_model = mobilenetv2.mobilenetv2_120d(features_only=True)
 # net_model = mobilenetv2.mobilenetv2_140(features_only=True)

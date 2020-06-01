@@ -184,11 +184,21 @@ class Bottleneck(nn.Module):
                  reduce_first=1, dilation=1, first_dilation=None, act_layer=nn.ReLU, norm_layer=nn.BatchNorm2d,
                  attn_layer=None, drop_block=None, drop_path=None):
         super(Bottleneck, self).__init__()
-
         width = int(math.floor(planes * (base_width / 64)) * cardinality)
         first_planes = width // reduce_first
         outplanes = planes * self.expansion
         first_dilation = first_dilation or dilation
+        # print(f'inplanes : {inplanes}')
+        # print(f'planes   : {planes}')
+        # print(f'stride   : {stride}')
+        # print(f'downsample  : {downsample}')
+        # print(f'cardinality : {cardinality}')
+        # print(f'base_width  : {base_width}')
+        # print(f'reduce_first : {reduce_first}')
+        # print(f'width   : {width}')
+        # print(f'first_planes : {first_planes}')
+        # print(f'outplanes    : {outplanes}')
+        # print('-'*32)
 
         self.conv1 = nn.Conv2d(inplanes, first_planes, kernel_size=1, bias=False)
         self.bn1 = norm_layer(first_planes)
@@ -480,6 +490,11 @@ class ResNetFeatures(nn.Module):
                  act_layer=nn.ReLU, norm_layer=nn.BatchNorm2d, drop_rate=0.0, drop_path_rate=0.,
                  drop_block_rate=0., global_pool='avg', zero_init_last_bn=True, block_args=None, 
                  **kwargs):
+        logger = kwargs.get('logger', None)
+        if logger:
+            logger.info('==== Build Backbone ======================')
+            logger.info('Backbone   : {}'.format('resnet'))
+
         block_args = block_args or dict()
         deep_stem = 'deep' in stem_type
         self.inplanes = stem_width * 2 if deep_stem else 64
@@ -526,7 +541,9 @@ class ResNetFeatures(nn.Module):
         layer_kwargs = dict(
             reduce_first=block_reduce_first, act_layer=act_layer, norm_layer=norm_layer,
             avg_down=avg_down, down_kernel_size=down_kernel_size, drop_path=dp, **block_args)
+        # print('='*64)
         self.layer1 = self._make_layer(block, *layer_args[0], **layer_kwargs)
+        # print('='*64)
         self.layer2 = self._make_layer(block, *layer_args[1], **layer_kwargs)
         self.layer3 = self._make_layer(block, drop_block=db_3, *layer_args[2], **layer_kwargs)
         self.layer4 = self._make_layer(block, drop_block=db_4, *layer_args[3], **layer_kwargs)
@@ -535,6 +552,25 @@ class ResNetFeatures(nn.Module):
         for i, idx in enumerate([2, 3, 4, 5]):
             self.features_num[f'c{idx}'] = channels[i] * block.expansion
         self.out_indices = [f'c{idx}' for idx in [3, 4, 5]]
+
+        self._initialize_weights(logger=logger)
+
+    def _initialize_weights(self, logger=None):
+        if logger:
+            logger.info('Initializing weights for ResNet ...')
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.Linear):
+                m.weight.data.normal_(0, 0.01)
+                m.bias.data.zero_()
 
     def init_weights(self, zero_init_last_bn=True):
         # Official init from torch repo.

@@ -11,8 +11,14 @@ class Anchors(nn.Module):
 
         self.pyramid_levels = [3, 4, 5, 6, 7] if pyramid_levels is None else pyramid_levels
         self.strides = [2 ** x for x in self.pyramid_levels] if strides is None else strides
-        self.sizes   = [2 ** (x + 2) for x in self.pyramid_levels] if sizes is None else sizes
+        if 'sizes_mapper' in kwargs:
+            sizes_mapper = eval(kwargs['sizes_mapper'])
+            self.sizes   = [sizes_mapper(x) for x in self.pyramid_levels]
+        else:
+            self.sizes   = [2 ** (x + 2) for x in self.pyramid_levels] if sizes is None else sizes
         self.ratios  = np.array([0.5, 1, 2]) if ratios is None else np.array(ratios)
+        if isinstance(scales, str):
+            scales = eval(scales)
         self.scales  = np.array([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)]) if scales is None else np.array(scales)
 
         # print('Anchors Sizes =', self.sizes)
@@ -20,9 +26,9 @@ class Anchors(nn.Module):
             kwargs['logger'].info('Anchors Sizes   : [ {} ]'.format(
                                   ', '.join(['{:>4}'.format(int(ss)) for ss in self.sizes])))
             kwargs['logger'].info('Anchors Scales  : [ {} ]'.format(
-                                  ', '.join(['{:>2.2f}'.format(ss) for ss in self.scales])))
+                                  ', '.join(['{:>4.3f}'.format(ss) for ss in self.scales])))
             kwargs['logger'].info('Anchors Ratios  : [ {} ]'.format(
-                                  ', '.join(['{:>2.2f}'.format(rr) for rr in self.ratios])))
+                                  ', '.join(['{:>4.3f}'.format(rr) for rr in self.ratios])))
             kwargs['logger'].info('Anchors Num     : {}'.format(len(self.ratios) * len(self.scales)))
             for idx in range(len(self.sizes)):
                 anchors = generate_anchors(base_size=self.sizes[idx], ratios=self.ratios, scales=self.scales, get_sample=True)

@@ -873,7 +873,7 @@ class Augmenter(object):
     """Convert ndarrays in sample to Tensors."""
     def __init__(self, use_flip = True, flip_theta=0.5, 
                        use_noise = True, noise_theta=0.8, noise_range=2.0/255.0,
-                       use_brightness = True, brightness_theta=0.2, brightness_range=0.05, 
+                       use_brightness = True, brightness_theta=0.8, brightness_range=0.25, 
                        use_scale = True, scale_theta=0.5, scale_max=1.0, scale_min=0.8, scale_stride=0.05,
                        **kwargs):
         self.use_flip = use_flip
@@ -935,6 +935,10 @@ class Augmenter(object):
             annots[:, 0] = cols - x2
             annots[:, 2] = cols - x_tmp
 
+        if self.use_brightness and np.random.rand() < self.brightness_theta:
+            image = image * np.random.uniform(1 - self.brightness_range, 1 + self.brightness_range)
+            image = np.clip(image, 0.0, 1.0)
+
         if self.use_noise and np.random.rand() < self.noise_theta:
             row, col, ch = image.shape
             noise = np.random.uniform(-self.noise_range, self.noise_range, (row, col, 1))
@@ -944,10 +948,6 @@ class Augmenter(object):
             image = np.clip(image, 0.0, 1.0)
             #gauss = np.random.normal(mean,sigma,(row,col,ch))
             #gauss = gauss.reshape(row,col,ch)
-
-        if self.use_brightness and np.random.rand() < self.brightness_theta:
-            image = image * np.random.uniform(1 - self.brightness_range, 1 + self.brightness_range)
-            image = np.clip(image, 0.0, 1.0)
         
         if self.use_scale and np.random.rand() < self.scale_theta:
             random_scale = random.sample(self.scale_candidate, 1)[0]

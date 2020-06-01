@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch
+import numpy as np
 import math
 from torchvision.ops import nms
 
@@ -64,7 +65,6 @@ class KSevenDet(nn.Module):
             bifpn_attention = cfg['neck_config']['bifpn_attention']
             if logger:
                 logger.info(f'==== Build Neck Layer ====================')
-                logger.info(f'==== Build Neck Layer ====')
                 logger.info(f'BiFPN Repeats: {bifpn_repeats}')
             _bifpn_modules = [BiFPN(_feature_channels, 
                                     in_pyramid_levels=self.backbone_feature_pyramid_levels, 
@@ -78,32 +78,35 @@ class KSevenDet(nn.Module):
         else:
             raise ValueError(f'Unknown neck {cfg["neck"]}')
 
-        
+        # my_pyramid_levels = [3, 4, 5, 6, 7]
+        my_pyramid_levels = self.neck_feature_pyramid_levels
+        my_strides = [2 ** x for x in my_pyramid_levels]
+        # my_sizes   = [2 ** (x + 2) for x in my_pyramid_levels]
+        #my_sizes   = [2 ** (x + 1) * 1.5 for x in my_pyramid_levels]
+        my_sizes   = [2 ** (x + 1) * 1.25 for x in my_pyramid_levels]
+        # my_ratios  = np.array([0.5, 1, 2])  # shape_0 / shape_1
+        my_ratios  = np.array([1, 2])  # shape_0 / shape_1
+        my_scales  = np.array([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)])
+        my_num_anchors = len(my_ratios) * len(my_scales)
+
+        # my_sizes   = [int(2 ** (x + 1) * 1.25) for x in my_pyramid_levels]
+        # my_sizes   = [int(2 ** (x + 2)) for x in my_pyramid_levels]
+        # my_ratios  = [1, 1.5, 2]
+        # my_ratios  = [0.45, 1, 3]
+        #self.anchors = Anchors(pyramid_levels=my_pyramid_levels,
+        #                       strides=my_strides,
+        #                       sizes=my_sizes,
+        #                       ratios=my_ratios,
+        #                       scales=my_scales,
+        #                       **kwargs)
+        self.anchors = Anchors(pyramid_levels=self.neck_feature_pyramid_levels, logger=logger, 
+                               **cfg['anchors_config'])
+        # self.anchors = Anchors()
 
         self.head_version = 1
-        self.regressor = Regressor(fpn_features_num, logger=logger, **cfg['head_config'])
-        self.classifier = Classifier(fpn_features_num, num_classes=self.num_classes, logger=logger, **cfg['head_config'])
+        self.regressor = Regressor(fpn_features_num, num_anchors=my_num_anchors, logger=logger, **cfg['head_config'])
+        self.classifier = Classifier(fpn_features_num, num_anchors=my_num_anchors, num_classes=self.num_classes, logger=logger, **cfg['head_config'])
 
-        #HEAD_VERSION = 1
-        #if HEAD_VERSION == 1:
-        #    self.head_version = 1
-        #    self.regressor = RegressorV1(fpn_features_num)
-        #    self.classifier = ClassifierV1(fpn_features_num, num_classes=self.num_classes)
-        #else:
-        #    self.head_version = 2
-        #    self.regressor = RegressorV2(fpn_features_num)
-        #    self.classifier = ClassifierV2(fpn_features_num, num_classes=self.num_classes)
-
-        my_pyramid_levels = self.neck_feature_pyramid_levels
-        # my_sizes   = [int(2 ** (x + 1) * 1.25) for x in my_pyramid_levels]
-        my_sizes   = [int(2 ** (x + 2)) for x in my_pyramid_levels]
-        my_ratios  = [1, 1.5, 2]
-        #my_ratios  = [0.45, 1, 3]
-        # self.anchors = Anchors(pyramid_levels=my_pyramid_levels,
-        #                        sizes=my_sizes,
-        #                        ratios=my_ratios,
-        #                        **kwargs)
-        self.anchors = Anchors()
 
         self.regressBoxes = BBoxTransform()
 
@@ -238,7 +241,7 @@ class KSevenDet(nn.Module):
             scores_over_thresh = (scores > 0.05)[0, :, 0]
 
             if scores_over_thresh.sum() == 0:
-                print('No boxes to NMS')
+                # print('No boxes to NMS')
                 # no boxes to NMS, just return
                 # return [torch.zeros(0), torch.zeros(0), torch.zeros(0, 4)]
                 return [torch.zeros([1]).cuda(0), torch.zeros([1]).cuda(0), torch.zeros([1, 4]).cuda(0)]

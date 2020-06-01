@@ -74,9 +74,9 @@ def main():
     net_logger.info('Dataset Type: {}'.format(args.dataset_type))
 
     _shape_1, _shape_2 = tuple(map(int, args.input_shape.split(',')))
-    _augmenter  = Augmenter(use_flip=True, use_noise=True, use_brightness=True, use_scale=True)
+    # _augmenter  = Augmenter(use_flip=True, use_noise=True, use_brightness=True, use_scale=True)
     # _augmenter  = Augmenter(use_flip=False, use_noise=True, noise_theta=1.0, use_brightness=False, use_scale=False)
-    # _augmenter  = Augmenter(use_flip=False, use_noise=False, use_brightness=True, brightness_theta=1.0, use_scale=False)
+    _augmenter  = Augmenter(use_flip=False, use_noise=False, use_brightness=True, brightness_theta=1.0, use_scale=False)
     # _augmenter  = Augmenter(use_flip=False, use_noise=False, use_brightness=False, use_scale=True, scale_theta=1.0)
     _normalizer = Normalizer()
     if args.resize_mode == 0:
