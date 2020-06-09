@@ -81,31 +81,32 @@ class Regressor(nn.Module):
     """
 
     def __init__(self, in_features_num, num_anchors=9, 
-                 features_num=256, layers_num=3, num_pyramid_levels=5, head_type='simple', act_type='relu', 
+                 features_num=256, layers_num=3, num_pyramid_levels=5, head_type='simple', act_type='relu', share_weights=True,
                  conv_kernel_size=3, conv_stride=1, conv_padding=1, 
                  onnx_export=ONNX_EXPORT,
                  **kwargs):
         assert head_type in ['simple', 'efficient']
         assert act_type in ['relu', 'swish']
-        #conv_kernel_size = (5, 3)
-        #conv_stride = 1
-        #conv_padding = (2, 1) 
+        super(Regressor, self).__init__()
+        self.convert_onnx = False
+
         if isinstance(conv_kernel_size, list):
             conv_kernel_size = tuple(conv_kernel_size)
         if isinstance(conv_padding, list):
             conv_padding = tuple(conv_padding)
-        super(Regressor, self).__init__()
         self.layers_num = layers_num
         self.num_pyramid_levels = num_pyramid_levels
         self.head_type = head_type
+        self.share_weights = share_weights
 
         logger = kwargs.get('logger', None)
         if logger:
             logger.info(f'==== Build Head Layer ====================')
-            logger.info(f'Head Type    : Regression ({head_type} + {act_type})')
-            logger.info(f'Features Num : {features_num}')
-            logger.info(f'Anchors Num  : {num_anchors}')
-            logger.info(f'Layers Num   : {layers_num}')
+            logger.info(f'Head Type     : Regression ({head_type} + {act_type})')
+            logger.info(f'Features Num  : {features_num}')
+            logger.info(f'Anchors Num   : {num_anchors}')
+            logger.info(f'Layers Num    : {layers_num}')
+            logger.info(f'Share Weights : {share_weights}')
             logger.info(f'Conv Kernel Size : {conv_kernel_size}')
             logger.info(f'Conv Padding     : {conv_padding}')
             logger.info(f'Conv Stride      : {conv_stride}')
@@ -114,15 +115,24 @@ class Regressor(nn.Module):
         _conv_kwargs = {'kernel_size': conv_kernel_size, 'stride': conv_stride, 'padding': conv_padding}
         if head_type == 'efficient':
             _conv_kwargs.update({'norm': False, 'activation': False})
-        self.conv_list = nn.ModuleList(
-            [_conv_block(in_features_num if i == 0 else features_num, 
-                         features_num, **_conv_kwargs) for i in range(layers_num)])
-        self.bn_list = nn.ModuleList(
-            [nn.ModuleList([nn.BatchNorm2d(features_num, 
-                                           momentum=0.01, eps=1e-3) for i in range(layers_num)]) for j in
-             range(num_pyramid_levels)])
-
-        self.header = _conv_block(features_num, num_anchors * 4, **_conv_kwargs)
+        #self.conv_list = nn.ModuleList(
+        #    [_conv_block(in_features_num if i == 0 else features_num, 
+        #                 features_num, **_conv_kwargs) for i in range(layers_num)])
+        if share_weights:
+            self.conv_tower = nn.ModuleList([nn.ModuleList([_conv_block(in_features_num if i == 0 else features_num, 
+                                                           features_num, **_conv_kwargs) for i in range(layers_num)])])
+            self.header = nn.ModuleList([_conv_block(features_num, num_anchors * 4, **_conv_kwargs)])
+        else:
+            sub_conv_towers = list()
+            for p in range(num_pyramid_levels):
+                sub_conv_towers.append(nn.ModuleList([_conv_block(in_features_num if i == 0 else features_num, 
+                                       features_num, **_conv_kwargs) for i in range(layers_num)]))
+            self.conv_tower = nn.ModuleList(sub_conv_towers)
+            self.header = nn.ModuleList([_conv_block(features_num, num_anchors * 4, **_conv_kwargs)
+                                         for p in range(num_pyramid_levels)])
+        self.bn_modules = nn.ModuleList(
+            [nn.ModuleList([nn.BatchNorm2d(features_num, momentum=0.01, eps=1e-3) 
+                            for i in range(layers_num)]) for j in range(num_pyramid_levels)])
         
         if act_type == 'swish':
             self.act_fn = MemoryEfficientSwish() if not onnx_export else Swish()
@@ -146,16 +156,23 @@ class Regressor(nn.Module):
                 m.bias.data.zero_()
 
     def forward(self, inputs):
+        if self.convert_onnx:
+            print('Convert ONNX Mode at Simple-Regressor')
         feats = []
-        for feat, bn_list in zip(inputs, self.bn_list):
-            for i, bn, conv in zip(range(self.layers_num), bn_list, self.conv_list):
+        for p, feat, bn_modules in zip(range(self.num_pyramid_levels), inputs, self.bn_modules):
+            tower_idx = 0 if self.share_weights else p
+            for i, bn, conv in zip(range(self.layers_num), bn_modules, self.conv_tower[tower_idx]):
                 feat = conv(feat)
                 feat = bn(feat)
                 feat = self.act_fn(feat)
-            feat = self.header(feat)
+            feat = self.header[tower_idx](feat)
 
             feat = feat.permute(0, 2, 3, 1)
-            feat = feat.contiguous().view(feat.shape[0], -1, 4)
+            if self.convert_onnx:
+                batch_size = 1
+            else:
+                batch_size = feat.shape[0]
+            feat = feat.contiguous().view(batch_size, -1, 4)
 
             feats.append(feat)
 
@@ -170,31 +187,33 @@ class Classifier(nn.Module):
     """
 
     def __init__(self, in_features_num, num_anchors=9, num_classes=80, 
-                 features_num=256, layers_num=3, num_pyramid_levels=5, head_type='simple', act_type='relu', 
+                 features_num=256, layers_num=3, num_pyramid_levels=5, head_type='simple', act_type='relu', share_weights=True, 
                  conv_kernel_size=3, conv_stride=1, conv_padding=1, 
-                 onnx_export=ONNX_EXPORT,
-                 **kwargs):
+                 onnx_export=ONNX_EXPORT, **kwargs):
         assert head_type in ['simple', 'efficient']
         assert act_type in ['relu', 'swish']
-        #conv_kernel_size = (5, 3)
-        #conv_stride = 1
-        #conv_padding = (2, 1) 
+        super(Classifier, self).__init__()
+        self.convert_onnx = False
+        self.pyramid_sizes = None
+
         if isinstance(conv_kernel_size, list):
             conv_kernel_size = tuple(conv_kernel_size)
         if isinstance(conv_padding, list):
             conv_padding = tuple(conv_padding)
-        super(Classifier, self).__init__()
         self.num_anchors = num_anchors
         self.num_classes = num_classes
         self.layers_num = layers_num
         self.num_pyramid_levels = num_pyramid_levels
+        self.share_weights = share_weights
+
         logger = kwargs.get('logger', None)
         if logger:
             logger.info(f'==== Build Head Layer ====================')
-            logger.info(f'Head Type    : Classification ({head_type} + {act_type})')
-            logger.info(f'Features Num : {features_num}')
-            logger.info(f'Anchors Num  : {num_anchors}')
-            logger.info(f'Layers Num   : {layers_num}')
+            logger.info(f'Head Type     : Classification ({head_type} + {act_type})')
+            logger.info(f'Features Num  : {features_num}')
+            logger.info(f'Anchors Num   : {num_anchors}')
+            logger.info(f'Layers Num    : {layers_num}')
+            logger.info(f'Share Weights : {share_weights}')
             logger.info(f'Conv Kernel Size : {conv_kernel_size}')
             logger.info(f'Conv Padding     : {conv_padding}')
             logger.info(f'Conv Stride      : {conv_stride}')
@@ -203,15 +222,29 @@ class Classifier(nn.Module):
         _conv_kwargs = {'kernel_size': conv_kernel_size, 'stride': conv_stride, 'padding': conv_padding}
         if head_type == 'efficient':
             _conv_kwargs.update({'norm': False, 'activation': False})
-        self.conv_list = nn.ModuleList(
-            [_conv_block(in_features_num if i == 0 else features_num, 
-                         features_num, **_conv_kwargs) for i in range(layers_num)])
-        self.bn_list = nn.ModuleList(
-            [nn.ModuleList([nn.BatchNorm2d(features_num, 
-                                           momentum=0.01, eps=1e-3) for i in range(layers_num)]) for j in
-             range(num_pyramid_levels)])
+        #self.conv_list = nn.ModuleList(
+        #    [_conv_block(in_features_num if i == 0 else features_num, 
+        #                 features_num, **_conv_kwargs) for i in range(layers_num)])
+        #self.bn_list = nn.ModuleList(
+        #    [nn.ModuleList([nn.BatchNorm2d(features_num, momentum=0.01, eps=1e-3) 
+        #                    for i in range(layers_num)]) for j in range(num_pyramid_levels)])
 
-        self.header = _conv_block(features_num, num_anchors * num_classes, **_conv_kwargs)
+        #self.header = _conv_block(features_num, num_anchors * num_classes, **_conv_kwargs)
+        if share_weights:
+            self.conv_tower = nn.ModuleList([nn.ModuleList([_conv_block(in_features_num if i == 0 else features_num, 
+                                                           features_num, **_conv_kwargs) for i in range(layers_num)])])
+            self.header = nn.ModuleList([_conv_block(features_num, num_anchors * num_classes, **_conv_kwargs)])
+        else:
+            sub_conv_towers = list()
+            for p in range(num_pyramid_levels):
+                sub_conv_towers.append(nn.ModuleList([_conv_block(in_features_num if i == 0 else features_num, 
+                                       features_num, **_conv_kwargs) for i in range(layers_num)]))
+            self.conv_tower = nn.ModuleList(sub_conv_towers)
+            self.header = nn.ModuleList([_conv_block(features_num, num_anchors * num_classes, **_conv_kwargs)
+                                         for p in range(num_pyramid_levels)])
+        self.bn_modules = nn.ModuleList(
+            [nn.ModuleList([nn.BatchNorm2d(features_num, momentum=0.01, eps=1e-3) 
+                            for i in range(layers_num)]) for j in range(num_pyramid_levels)])
 
         if act_type == 'swish':
             self.act_fn = MemoryEfficientSwish() if not onnx_export else Swish()
@@ -237,18 +270,38 @@ class Classifier(nn.Module):
                 m.bias.data.zero_()
 
     def forward(self, inputs):
+        if self.convert_onnx:
+            assert self.pyramid_sizes is not None, 'HEAD[Simple-Classifier]::pyramid_sizes Must to be not None.'
+            print('Convert ONNX Mode at Simple-Classifier')
+            for i in range(len(self.pyramid_sizes)):
+                print('[{}] Pyramid Feature Grid Size = [{:>4},{:>4}]'.format(i, *self.pyramid_sizes[i]))
+
         feats = []
-        for feat, bn_list in zip(inputs, self.bn_list):
-            for i, bn, conv in zip(range(self.layers_num), bn_list, self.conv_list):
+        for p, feat, bn_modules in zip(range(self.num_pyramid_levels), inputs, self.bn_modules):
+            # print(f'in shape: {feat.shape}')
+            tower_idx = 0 if self.share_weights else p
+            for i, bn, conv in zip(range(self.layers_num), bn_modules, self.conv_tower[tower_idx]):
                 feat = conv(feat)
                 feat = bn(feat)
                 feat = self.act_fn(feat)
-            feat = self.header(feat)
+            feat = self.header[tower_idx](feat)
 
             feat = feat.permute(0, 2, 3, 1)
-            feat = feat.contiguous().view(feat.shape[0], feat.shape[1], feat.shape[2], self.num_anchors,
-                                          self.num_classes)
-            feat = feat.contiguous().view(feat.shape[0], -1, self.num_classes)
+            # print(f'out shape: {feat.shape}')
+            if self.convert_onnx:
+                batch_size = 1
+                width, height = self.pyramid_sizes[p]
+                channels = self.num_classes * self.num_anchors
+                #print('[b, w, h, c] = [{}, {}, {}, {}]'.format(batch_size, width, height, channels))
+            else:
+                batch_size, width, height, channels = feat.shape
+                # print('[b, w, h, c] = [{}, {}, {}, {}]'.format(batch_size, width, height, channels))
+            #out2 = out1.view(batch_size, width, height, self.num_anchors, self.num_classes)
+            #feat = feat.contiguous().view(feat.shape[0], feat.shape[1], feat.shape[2], self.num_anchors,
+            #                              self.num_classes)
+            #feat = feat.contiguous().view(feat.shape[0], -1, self.num_classes)
+            feat = feat.contiguous().view(batch_size, width, height, self.num_anchors, self.num_classes)
+            feat = feat.contiguous().view(batch_size, -1, self.num_classes)
 
             feats.append(feat)
 

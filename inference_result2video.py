@@ -17,7 +17,7 @@ from datasettool.ksevendata_eval import coco_evaluate_ksevendata
 import skimage.draw
 import skimage.io
 import skimage.color
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import cv2
 
 import matplotlib.pyplot as plt 
@@ -197,6 +197,8 @@ def main():
     demo_image_files.sort()
     #if len(demo_image_files) > CONVERT_FILE_LIMIT:
     #    print('WARNING: Too many files...    total {} files.'.format(len(demo_image_files)))
+    fontsize = 12
+    score_font = ImageFont.truetype("DejaVuSans.ttf", size=fontsize)
 
     net_model.eval()
 
@@ -208,7 +210,7 @@ def main():
     #for f in demo_image_files[:1]:
     # for f in demo_image_files[:100]:
     #for f in demo_image_files[:min(len(demo_image_files), CONVERT_FILE_LIMIT)]:
-        print(f)
+        print(f'inference {f}', end="\r")
         if f[-3:] not in ['png', 'jpg']:
             continue
         #img = skimage.io.imread(os.path.join(args.demo_path, f))
@@ -256,8 +258,10 @@ def main():
             _text_offset_x, _text_offset_y = 2, 3
             #draw.rectangle(tuple([x, y, x+w, y+h]), width = 1, outline ='green')
             draw.rectangle(tuple([x, y, x+w, y+h]), width = 1, outline = color_)
+            draw.text(tuple([int(x)+_text_offset_x+1, int(y)+_text_offset_y+1]),
+                      '{:.3f}'.format(score), fill='#000000', font=score_font)
             draw.text(tuple([int(x)+_text_offset_x, int(y)+_text_offset_y]),
-                      '{:.4f}'.format(score), fill = color_)
+                      '{:.3f}'.format(score), fill=color_, font=score_font)
             
             # append detection to results
             # results.append(image_result)
@@ -270,7 +274,7 @@ def main():
     
     height, width, layers = img_array[0].shape
     size = (width, height)
-    fps = 25
+    fps = 30
     #fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
 
     out_video_file = os.path.join(args.output_path, 
@@ -284,24 +288,6 @@ def main():
     out.release()
         
     print('Done')
-    # print(demo_image_files)
-    #net_logger.info('There are {} images for testing.'.format(len(dataset_valid)))
-    #net_logger.info('Testing start ...')
-    #net_model.is_training = False
-    #with torch.no_grad():
-    #    if(parser.dataset == 'VOC'):
-    #        evaluate(dataset, net_model)
-    #    elif parser.dataset == 'COCO':
-    #        evaluate_coco(dataset, net_model)
-    #    elif parser.dataset == 'FLIR':
-    #        summarize = evaluate_flir(dataset_valid, net_model)
-    #        net_logger.info('\n{}'.format(summarize))
-    #    elif parser.dataset == 'thermal':
-    #        summarize = coco_evaluate_cvidata(dataset_valid, net_model)
-    #        net_logger.info('\n{}'.format(summarize))
-    #        
-    #    else:
-    #        print('ERROR: Unknow dataset.')
 
 
 if __name__ == '__main__':

@@ -18,7 +18,7 @@ class BiFPN(nn.Module):
 
     # def __init__(self, num_channels, conv_channels, first_time=False, epsilon=1e-4, onnx_export=False, attention=True):
     def __init__(self, backbone_features_num, in_pyramid_levels=[3,4,5], out_pyramid_levels=[3,4,5,6,7], features_num=64, 
-                 first_time=False, epsilon=1e-4, onnx_export=True, attention=False, **kwargs):
+                 first_time=False, epsilon=1e-4, onnx_export=True, attention=False, act_func='relu', **kwargs):
         """
 
         Args:
@@ -31,7 +31,11 @@ class BiFPN(nn.Module):
         """
         assert in_pyramid_levels  == [3,4,5]
         assert out_pyramid_levels == [3,4,5,6,7]
+        assert act_func in ['relu', 'swish'], f'Unknown act_func: {act_func}'
         super(BiFPN, self).__init__()
+        self.convert_onnx = False
+        self.pyramid_sizes = None
+
         self.backbone_features_num = backbone_features_num
         self.in_pyramid_levels  = in_pyramid_levels
         self.out_pyramid_levels = out_pyramid_levels
@@ -47,14 +51,14 @@ class BiFPN(nn.Module):
             logger.info(f'Attention: {attention}')
 
         # Conv layers
-        self.conv3_up = SeparableConvBlock(features_num, onnx_export=onnx_export)
-        self.conv4_up = SeparableConvBlock(features_num, onnx_export=onnx_export)
-        self.conv5_up = SeparableConvBlock(features_num, onnx_export=onnx_export)
-        self.conv6_up = SeparableConvBlock(features_num, onnx_export=onnx_export)
-        self.conv7_down = SeparableConvBlock(features_num, onnx_export=onnx_export)
-        self.conv6_down = SeparableConvBlock(features_num, onnx_export=onnx_export)
-        self.conv5_down = SeparableConvBlock(features_num, onnx_export=onnx_export)
-        self.conv4_down = SeparableConvBlock(features_num, onnx_export=onnx_export)
+        self.conv3_up = SeparableConvBlock(features_num, activation=True, act_func=act_func, onnx_export=onnx_export)
+        self.conv4_up = SeparableConvBlock(features_num, activation=True, act_func=act_func, onnx_export=onnx_export)
+        self.conv5_up = SeparableConvBlock(features_num, activation=True, act_func=act_func, onnx_export=onnx_export)
+        self.conv6_up = SeparableConvBlock(features_num, activation=True, act_func=act_func, onnx_export=onnx_export)
+        self.conv7_down = SeparableConvBlock(features_num, activation=True, act_func=act_func, onnx_export=onnx_export)
+        self.conv6_down = SeparableConvBlock(features_num, activation=True, act_func=act_func, onnx_export=onnx_export)
+        self.conv5_down = SeparableConvBlock(features_num, activation=True, act_func=act_func, onnx_export=onnx_export)
+        self.conv4_down = SeparableConvBlock(features_num, activation=True, act_func=act_func, onnx_export=onnx_export)
         # print(self.conv6_up)
         # print(self.conv4_down)
 
@@ -71,7 +75,11 @@ class BiFPN(nn.Module):
         self.p6_downsample = nn.MaxPool2d(3, stride=2, padding=1)
         self.p7_downsample = nn.MaxPool2d(3, stride=2, padding=1)
 
-        self.swish = MemoryEfficientSwish() if not onnx_export else Swish()
+        # self.swish = MemoryEfficientSwish() if not onnx_export else Swish()
+        if act_func == 'swish':
+            self.act_func = MemoryEfficientSwish() if not onnx_export else Swish()
+        elif act_func == 'relu':
+            self.act_func = nn.ReLU()
 
         self.first_time = first_time
         if self.first_time:
@@ -196,25 +204,25 @@ class BiFPN(nn.Module):
         p6_w1 = self.p6_w1_relu(self.p6_w1)
         weight = p6_w1 / (torch.sum(p6_w1, dim=0) + self.epsilon)
         # Connections for P6_0 and P7_0 to P6_1 respectively
-        p6_up = self.conv6_up(self.swish(weight[0] * p6_in + weight[1] * self.p6_upsample(p7_in)))
+        p6_up = self.conv6_up(self.act_func(weight[0] * p6_in + weight[1] * self.p6_upsample(p7_in)))
 
         # Weights for P5_0 and P6_0 to P5_1
         p5_w1 = self.p5_w1_relu(self.p5_w1)
         weight = p5_w1 / (torch.sum(p5_w1, dim=0) + self.epsilon)
         # Connections for P5_0 and P6_0 to P5_1 respectively
-        p5_up = self.conv5_up(self.swish(weight[0] * p5_in + weight[1] * self.p5_upsample(p6_up)))
+        p5_up = self.conv5_up(self.act_func(weight[0] * p5_in + weight[1] * self.p5_upsample(p6_up)))
 
         # Weights for P4_0 and P5_0 to P4_1
         p4_w1 = self.p4_w1_relu(self.p4_w1)
         weight = p4_w1 / (torch.sum(p4_w1, dim=0) + self.epsilon)
         # Connections for P4_0 and P5_0 to P4_1 respectively
-        p4_up = self.conv4_up(self.swish(weight[0] * p4_in + weight[1] * self.p4_upsample(p5_up)))
+        p4_up = self.conv4_up(self.act_func(weight[0] * p4_in + weight[1] * self.p4_upsample(p5_up)))
 
         # Weights for P3_0 and P4_1 to P3_2
         p3_w1 = self.p3_w1_relu(self.p3_w1)
         weight = p3_w1 / (torch.sum(p3_w1, dim=0) + self.epsilon)
         # Connections for P3_0 and P4_1 to P3_2 respectively
-        p3_out = self.conv3_up(self.swish(weight[0] * p3_in + weight[1] * self.p3_upsample(p4_up)))
+        p3_out = self.conv3_up(self.act_func(weight[0] * p3_in + weight[1] * self.p3_upsample(p4_up)))
 
         if self.first_time:
             p4_in = self.p4_down_channel_2(p4)
@@ -225,31 +233,37 @@ class BiFPN(nn.Module):
         weight = p4_w2 / (torch.sum(p4_w2, dim=0) + self.epsilon)
         # Connections for P4_0, P4_1 and P3_2 to P4_2 respectively
         p4_out = self.conv4_down(
-            self.swish(weight[0] * p4_in + weight[1] * p4_up + weight[2] * self.p4_downsample(p3_out)))
+            self.act_func(weight[0] * p4_in + weight[1] * p4_up + weight[2] * self.p4_downsample(p3_out)))
 
         # Weights for P5_0, P5_1 and P4_2 to P5_2
         p5_w2 = self.p5_w2_relu(self.p5_w2)
         weight = p5_w2 / (torch.sum(p5_w2, dim=0) + self.epsilon)
         # Connections for P5_0, P5_1 and P4_2 to P5_2 respectively
         p5_out = self.conv5_down(
-            self.swish(weight[0] * p5_in + weight[1] * p5_up + weight[2] * self.p5_downsample(p4_out)))
+            self.act_func(weight[0] * p5_in + weight[1] * p5_up + weight[2] * self.p5_downsample(p4_out)))
 
         # Weights for P6_0, P6_1 and P5_2 to P6_2
         p6_w2 = self.p6_w2_relu(self.p6_w2)
         weight = p6_w2 / (torch.sum(p6_w2, dim=0) + self.epsilon)
         # Connections for P6_0, P6_1 and P5_2 to P6_2 respectively
         p6_out = self.conv6_down(
-            self.swish(weight[0] * p6_in + weight[1] * p6_up + weight[2] * self.p6_downsample(p5_out)))
+            self.act_func(weight[0] * p6_in + weight[1] * p6_up + weight[2] * self.p6_downsample(p5_out)))
 
         # Weights for P7_0 and P6_2 to P7_2
         p7_w2 = self.p7_w2_relu(self.p7_w2)
         weight = p7_w2 / (torch.sum(p7_w2, dim=0) + self.epsilon)
         # Connections for P7_0 and P6_2 to P7_2
-        p7_out = self.conv7_down(self.swish(weight[0] * p7_in + weight[1] * self.p7_downsample(p6_out)))
+        p7_out = self.conv7_down(self.act_func(weight[0] * p7_in + weight[1] * self.p7_downsample(p6_out)))
 
         return p3_out, p4_out, p5_out, p6_out, p7_out
 
     def _forward(self, inputs):
+        if self.convert_onnx:
+            assert self.pyramid_sizes is not None, 'NECK[BiFPN]::pyramid_sizes must be not None'
+            print('Convert ONNX Mode at NECK[BiFPN]')
+            for i in range(len(self.pyramid_sizes)):
+                print('[{}] Pyramid Feature Grid Size = [{:>4},{:>4}]'.format(i, *self.pyramid_sizes[i]))
+
         if self.first_time:
             p3, p4, p5 = inputs
 
@@ -265,18 +279,27 @@ class BiFPN(nn.Module):
             p3_in, p4_in, p5_in, p6_in, p7_in = inputs
 
         # P7_0 to P7_2
+        if self.convert_onnx:
+            self.p6_upsample.scale_factor = None
+            self.p5_upsample.scale_factor = None
+            self.p4_upsample.scale_factor = None
+            self.p3_upsample.scale_factor = None
+            self.p6_upsample.size = list(self.pyramid_sizes[3])
+            self.p5_upsample.size = list(self.pyramid_sizes[2])
+            self.p4_upsample.size = list(self.pyramid_sizes[1])
+            self.p3_upsample.size = list(self.pyramid_sizes[0])
 
         # Connections for P6_0 and P7_0 to P6_1 respectively
-        p6_up = self.conv6_up(self.swish(p6_in + self.p6_upsample(p7_in)))
+        p6_up = self.conv6_up(self.act_func(p6_in + self.p6_upsample(p7_in)))
 
         # Connections for P5_0 and P6_0 to P5_1 respectively
-        p5_up = self.conv5_up(self.swish(p5_in + self.p5_upsample(p6_up)))
+        p5_up = self.conv5_up(self.act_func(p5_in + self.p5_upsample(p6_up)))
 
         # Connections for P4_0 and P5_0 to P4_1 respectively
-        p4_up = self.conv4_up(self.swish(p4_in + self.p4_upsample(p5_up)))
+        p4_up = self.conv4_up(self.act_func(p4_in + self.p4_upsample(p5_up)))
 
         # Connections for P3_0 and P4_1 to P3_2 respectively
-        p3_out = self.conv3_up(self.swish(p3_in + self.p3_upsample(p4_up)))
+        p3_out = self.conv3_up(self.act_func(p3_in + self.p3_upsample(p4_up)))
 
         if self.first_time:
             p4_in = self.p4_down_channel_2(p4)
@@ -284,18 +307,18 @@ class BiFPN(nn.Module):
 
         # Connections for P4_0, P4_1 and P3_2 to P4_2 respectively
         p4_out = self.conv4_down(
-            self.swish(p4_in + p4_up + self.p4_downsample(p3_out)))
+            self.act_func(p4_in + p4_up + self.p4_downsample(p3_out)))
 
         # Connections for P5_0, P5_1 and P4_2 to P5_2 respectively
         p5_out = self.conv5_down(
-            self.swish(p5_in + p5_up + self.p5_downsample(p4_out)))
+            self.act_func(p5_in + p5_up + self.p5_downsample(p4_out)))
 
         # Connections for P6_0, P6_1 and P5_2 to P6_2 respectively
         p6_out = self.conv6_down(
-            self.swish(p6_in + p6_up + self.p6_downsample(p5_out)))
+            self.act_func(p6_in + p6_up + self.p6_downsample(p5_out)))
 
         # Connections for P7_0 and P6_2 to P7_2
-        p7_out = self.conv7_down(self.swish(p7_in + self.p7_downsample(p6_out)))
+        p7_out = self.conv7_down(self.act_func(p7_in + self.p7_downsample(p6_out)))
 
         return p3_out, p4_out, p5_out, p6_out, p7_out
 
@@ -331,7 +354,7 @@ class SeparableConvBlock(nn.Module):
     """
 
     # def __init__(self, in_channels, out_channels=None, norm=True, activation=False, onnx_export=False):
-    def __init__(self, in_channels, out_channels=None, norm=True, activation=True, act_func=Swish, onnx_export=True):
+    def __init__(self, in_channels, out_channels=None, norm=True, activation=True, act_func='relu', onnx_export=True):
         super(SeparableConvBlock, self).__init__()
         if out_channels is None:
             out_channels = in_channels
@@ -354,7 +377,12 @@ class SeparableConvBlock(nn.Module):
 
         self.activation = activation
         if self.activation:
-            self.swish = MemoryEfficientSwish() if not onnx_export else Swish()
+            if act_func == 'swish':
+                self.act_func = MemoryEfficientSwish() if not onnx_export else Swish()
+            elif act_func == 'relu':
+                self.act_func = nn.ReLU()
+            else:
+                assert 0, f'Unknown act_func: {act_func}'
 
     def forward(self, x):
         x = self.depthwise_conv(x)
@@ -364,7 +392,7 @@ class SeparableConvBlock(nn.Module):
             x = self.bn(x)
 
         if self.activation:
-            x = self.swish(x)
+            x = self.act_func(x)
 
         return x
 

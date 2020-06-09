@@ -17,7 +17,7 @@ from datasettool.ksevendata_eval import coco_evaluate_ksevendata
 import skimage.draw
 import skimage.io
 import skimage.color
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import cv2
 
 import matplotlib.pyplot as plt 
@@ -68,6 +68,8 @@ def get_args():
     #                    help='Output name')
     parser.add_argument('--resize_mode', default=1, type=int,
                         help='The resize mode for Resizer')
+    parser.add_argument('--model_name', default=None, type=str,
+                        help='Specific model name.')
 
     args = parser.parse_args()
     if args.model_config:
@@ -177,6 +179,8 @@ def main():
     img_array = []
 
     cap = cv2.VideoCapture(args.input_path)
+    fontsize = 12
+    score_font = ImageFont.truetype("DejaVuSans.ttf", size=fontsize)
 
     cap_i = 0
     while(cap.isOpened()):
@@ -231,8 +235,10 @@ def main():
             color_ = COLOR_LABEL[label]
             _text_offset_x, _text_offset_y = 2, 3
             draw.rectangle(tuple([x, y, x+w, y+h]), width = 1, outline = color_)
+            draw.text(tuple([int(x)+_text_offset_x+1, int(y)+_text_offset_y]),
+                      '{:.3f}'.format(score), fill='#000000', font=score_font)
             draw.text(tuple([int(x)+_text_offset_x, int(y)+_text_offset_y]),
-                      '{:.4f}'.format(score), fill = color_)
+                      '{:.3f}'.format(score), fill=color_, font=score_font)
             
         #img_array.append(np.array(img))
         #video_out.write(np.asarray(img))
@@ -248,7 +254,9 @@ def main():
 
     input_video_name = os.path.basename(args.input_path)
     input_video_dir  = os.path.dirname(args.input_path)
-    out_video_path   = os.path.join('trash', '{}_{}.avi'.format(input_video_name[:-4], network_name))
+    out_video_path   = os.path.join('trash', '{}_{}_thr{}.avi'.format( input_video_name[:-4], 
+                                    network_name if not args.model_name else args.model_name, 
+                                    int(args.threshold*100)))
     print('Convert to video... {}'.format(out_video_path))
     out = cv2.VideoWriter(out_video_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, size)
 

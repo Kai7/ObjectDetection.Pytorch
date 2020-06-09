@@ -20,14 +20,16 @@ import pdb
 class KSevenDet(nn.Module):
     def __init__(self, cfg, num_classes=80, iou_threshold=0.5, **kwargs):
         super(KSevenDet, self).__init__()
+        self.convert_onnx = False
+        self.fixed_size   = None
+
         logger = kwargs.get('logger', None)
         # self.backbone = _get_backbone(cfg)
         self.num_classes = num_classes
         self.backbone_feature_pyramid_levels = cfg['backbone_feature_pyramid_levels']
         self.neck_feature_pyramid_levels     = cfg['neck_feature_pyramid_levels']
+        self.build_config = cfg
         self.iou_threshold = iou_threshold
-
-        self.convert_onnx = False
 
         self.backbone = self._build_backbone(cfg, logger=logger)
         
@@ -190,7 +192,7 @@ class KSevenDet(nn.Module):
             if isinstance(layer, nn.BatchNorm2d):
                 layer.eval()
 
-    def forward(self, img_batch, annotations=None, return_head=False, return_loss=True):
+    def forward(self, img_batch, annotations=None, return_head=False, return_loss=False):
         #if self.training:
         #    img_batch, annotations = inputs
         #else:
@@ -198,11 +200,25 @@ class KSevenDet(nn.Module):
 
         features = self.backbone(img_batch)
 
+
+        #print(self.anchors.strides)
+        #print(self.neck.pyramid_sizes)
+        #exit(0)
+
         neck_features = self.neck(features)
 
         # for x_feature in neck_features:
         #     print(x_feature.shape)
         # exit(0)
+
+        if self.convert_onnx:
+            assert self.classifier.convert_onnx, 'HEAD-Classifier::convert_onnx must be True'
+            assert self.regressor.convert_onnx, 'HEAD-Regressor::convert_onnx must be True'
+            self.classifier.pyramid_sizes = list()
+            h, w = self.fixed_size
+            for s in self.anchors.strides:
+                _fixed_size = ( int(h/s), int(w/s) ) 
+                self.classifier.pyramid_sizes.append(_fixed_size)
 
         if self.head_version == 1:
             regression = self.regressor(neck_features)
@@ -255,3 +271,22 @@ class KSevenDet(nn.Module):
             nms_scores, nms_class = classification[0, anchors_nms_idx, :].max(dim=1)
 
             return [nms_scores, nms_class, transformed_anchors[0, anchors_nms_idx, :]]
+
+    def set_onnx_convert_info(self, fixed_size=(512, 512)):
+        self.fixed_size = fixed_size 
+        self.convert_onnx = True
+
+        pyramid_sizes = list()
+        h, w = self.fixed_size
+        for s in self.anchors.strides:
+            _fixed_size = ( int(h/s), int(w/s) ) 
+            pyramid_sizes.append(_fixed_size)
+        if self.build_config['neck'] == 'bifpn':
+            for m in self.neck:
+                m.convert_onnx = True
+                m.pyramid_sizes = pyramid_sizes
+        else:
+            self.neck.convert_onnx = True
+            self.neck.pyramid_sizes = pyramid_sizes
+        self.regressor.convert_onnx = True
+        self.classifier.convert_onnx = True

@@ -34,11 +34,11 @@ head_config: {
     #features_num: 256,
     layers_num  : 3,
 
-    conv_kernel_size : 3,
+    share_weights: False,
+
     #conv_kernel_size : [5, 3],
     #conv_kernel_size : [7, 3],
-    conv_stride      : 1,
-    conv_padding     : 1,
+    #conv_stride      : 1,
     #conv_padding     : [2, 1],
     #conv_padding     : [3, 1],
 }

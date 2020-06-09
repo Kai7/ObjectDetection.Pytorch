@@ -36,7 +36,7 @@ assert torch.__version__.split('.')[0] == '1'
 print('CUDA available: {}'.format(torch.cuda.is_available()))
 
 def get_args():
-    parser = argparse.ArgumentParser(description='Simple training script for training a RetinaNet network.')
+    parser = argparse.ArgumentParser(description='Simple training script for training a object detection network.')
     
     parser.add_argument('--dataset', help='Dataset Name')
     parser.add_argument('--dataset_root', default='/root/data/',
@@ -136,6 +136,9 @@ def main():
     assert args.dataset, 'dataset must provide'
     # pdb.set_trace()
     default_support_backbones = registry._module_to_models
+    
+    print(f'args.epochs = {args.epochs}')
+    print(f'args.batch_size = {args.batch_size}')
 
     # write_support_backbones(default_support_backbones)
 
@@ -374,6 +377,9 @@ def main():
         else:
             net_model.freeze_bn()
         #net_model.module.freeze_bn()
+        #net_model.eval()
+        #test(dataset_valid, net_model, epoch_num, args, net_logger)
+        #exit(0)
 
         epoch_loss = []
         for iter_num, data in enumerate(dataloader_train):
@@ -389,7 +395,7 @@ def main():
                     # elif multiple gpus, send it to multiple gpus in CustomDataParallel, not here
                     imgs = imgs.cuda()
                     annot = annot.cuda()
-                classification_loss, regression_loss = net_model(imgs, annot)
+                classification_loss, regression_loss = net_model(imgs, annot, return_loss=True)
 
                 #if torch.cuda.is_available():
                 #    #classification_loss, regression_loss = net_model([data['img'].cuda().float(), data['annot']])

@@ -93,14 +93,19 @@ class PANetFPN(nn.Module):
     """
     def __init__(self, backbone_features_num, in_pyramid_levels=[3,4,5], out_pyramid_levels=[3,4,5,6,7], 
                  features_num=256, panet_buttomup=False, 
-                 group_norm=False, gn_eps=1e-5, dim_per_gp=-1, num_groups=32, **kwargs):
+                 group_norm=False, gn_eps=1e-5, dim_per_gp=-1, num_groups=32, 
+                 **kwargs):
     # def __init__(self, fpn_level_info, P2only=False, panet_buttomup=False):
         super().__init__()
+        self.convert_onnx = False
+        self.pyramid_sizes = None
+
         self.panet_buttomup = panet_buttomup
         self.features_num = features_num
         self.in_pyramid_levels = in_pyramid_levels      # [3, 4, 5]
         self.out_pyramid_levels = out_pyramid_levels    # [3, 4, 5, 6, 7]
         self.backbone_features_num = backbone_features_num[::-1]
+
 
         logger = kwargs.get('logger', None)
         if logger:
@@ -234,14 +239,22 @@ class PANetFPN(nn.Module):
         #         getattr(self.conv_body, 'res%d' % (i+1))(conv_body_blobs[-1])
         #     )
         assert len(x_backbone_features) == len(self.in_pyramid_levels), "The number of backbone features don't match FPN pyramid levels"
+        if self.convert_onnx:
+            assert self.pyramid_sizes is not None, 'NECK[PANetFPN]::pyramid_sizes must be not None'
+            print('Convert ONNX Mode at NECK[PANetFPN]')
+            for i in range(len(self.pyramid_sizes)):
+                print('[{}] Pyramid Feature Grid Size = [{:>4},{:>4}]'.format(i, *self.pyramid_sizes[i]))
 
         fpn_inner_blobs = [self.conv_top(x_backbone_features[-1])]
         for i in range(len(self.in_pyramid_levels) - 1):
+            forward_args = {'fixed_size': self.pyramid_sizes[-i+len(self.in_pyramid_levels)-2]} if self.convert_onnx else dict()
             fpn_inner_blobs.append(
-                self.topdown_lateral_modules[i](fpn_inner_blobs[-1], x_backbone_features[-(i+2)])
+                self.topdown_lateral_modules[i](fpn_inner_blobs[-1], x_backbone_features[-(i+2)], **forward_args)
             )
         fpn_output_blobs = []
         if self.panet_buttomup:
+            if self.convert_onnx:
+                assert 0, 'Not support now'
             fpn_middle_blobs = []
         for i in range(len(self.in_pyramid_levels)):
             if not self.panet_buttomup:
@@ -313,13 +326,17 @@ class topdown_lateral_module(nn.Module):
         if conv.bias is not None:
             nn.init.constant_(conv.bias, 0)
 
-    def forward(self, top_blob, lateral_blob):
+    def forward(self, top_blob, lateral_blob, fixed_size=None):
         # Lateral 1x1 conv
         lat = self.conv_lateral(lateral_blob)
         # Top-down 2x upsampling
         # td = F.upsample(top_blob, size=lat.size()[2:], mode='bilinear')
         # td = F.upsample(top_blob, scale_factor=2, mode='nearest')
-        td = F.interpolate(top_blob, scale_factor=2, mode='nearest')
+        if not fixed_size:
+            td = F.interpolate(top_blob, scale_factor=2, mode='nearest')
+        else:
+            print('tt fixed_size')
+            td = F.interpolate(top_blob, size=fixed_size, mode='nearest')
         # Sum lateral and top-down
         return lat + td
 

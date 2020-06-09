@@ -13,8 +13,10 @@ variant: resnet18
 
 # Specifical Build Config
 #build_config: {}
+# following config is an example for shufflenetv2
 backbone_config: {
-    # TODO
+    stages_repeats: [4, 8, 4],
+    stages_out_channels: [24, 116, 232, 464, 1024],
 }
 
 #neck: fpn
@@ -35,11 +37,10 @@ head_config: {
     #features_num: 256,
     layers_num  : 3,
 
-    conv_kernel_size : 3,
+    share_weights: False,
+
     #conv_kernel_size : [5, 3],
     #conv_kernel_size : [7, 3],
-    conv_stride      : 1,
-    conv_padding     : 1,
     #conv_padding     : [2, 1],
     #conv_padding     : [3, 1],
 }
