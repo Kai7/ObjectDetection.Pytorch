@@ -62,10 +62,6 @@ def get_args():
                         help='Object pasitive threshold.')
     parser.add_argument('--input_path', default=None, type=str,
                         help='Input path')
-    #parser.add_argument('--output_path', default='video', type=str,
-    #                    help='Output path')
-    #parser.add_argument('--output_name', default=None, type=str,
-    #                    help='Output name')
     parser.add_argument('--resize_mode', default=1, type=int,
                         help='The resize mode for Resizer')
     parser.add_argument('--model_name', default=None, type=str,
@@ -77,8 +73,6 @@ def get_args():
             model_cfg = yaml.safe_load(f)
         setattr(args, 'architecture', model_cfg.pop('architecture'))
         setattr(args, 'model_cfg', model_cfg)
-    # print(model_cfg)
-    # pdb.set_trace()
 
     return args
 
@@ -192,19 +186,12 @@ def main():
         #img = skimage.io.imread(os.path.join(args.demo_path, f))
         #if len(img.shape) == 2:
         #    img = skimage.color.gray2rgb(img)
-        #print(np.sum(img - a_pil_img))
         a_img = np.copy(frame)
-        #print(a_img.shape)
         img = Image.fromarray(np.uint8(frame))
-        # print(a_img)
         a_img = a_img.astype(np.float32) / 255.0
-        # print(a_img.shape)
         a_img = transform(a_img)
-        # print(a_img.shape)
         a_img = torch.unsqueeze(a_img, 0)
-        # print(a_img.shape)
         a_img = a_img.permute(0, 3, 1, 2)
-        # print(a_img.shape)
 
         # print('predict...')
         scores, labels, boxes = net_model(a_img, return_loss=False)
@@ -218,8 +205,6 @@ def main():
         boxes[:, 3] -= boxes[:, 1]
 
         print(f'{cap_i}   inference ...', end="\r")
-        #video_out.write(np.array(img))
-        #video_out.write(np.asarray(img))
 
         draw = ImageDraw.Draw(img)
         for box_id in range(boxes.shape[0]):
@@ -240,8 +225,6 @@ def main():
             draw.text(tuple([int(x)+_text_offset_x, int(y)+_text_offset_y]),
                       '{:.3f}'.format(score), fill=color_, font=score_font)
             
-        #img_array.append(np.array(img))
-        #video_out.write(np.asarray(img))
         img_array.append(np.asarray(img))
         cap_i += 1
 
