@@ -19,33 +19,14 @@ DATASET_NAME="3sTFace_Manual_CVI"
 KSDET_MODEL_PATH="/data_host/trans/pytorch/ksevendet_models"
 
 INPUT_SHAPE="512,640"
-
-
-#RESUME_PT="saved/final_weight_0527/3sTFace0515_Manual_ksevendet-resnet18-fpn_final_4.pt"
-#    --resume $RESUME_PT \
-
-
-##MODEL_CONFIG="${KSDET_MODEL_PATH}/3sTFace_0515_Manual/mAP-608_resnet18_bifpn_final_4.yaml"
-##RESUME_PT="${KSDET_MODEL_PATH}/3sTFace_0515_Manual/mAP-608_resnet18_bifpn_final_4.pt"
-##MODEL_CONFIG="config/model/ksevendet_resnet_bifpn.yaml"
-##RESUME_PT="${KSDET_MODEL_PATH}/final_weights_0604/3sTFace_Manual_CVI_ksevendet-resnet18-bifpn_final_8.pt"
-#MODEL_CONFIG="config/model_3s-thermal-face/ksevendet_resnet_bifpn.yaml"
-#RESUME_PT="${KSDET_MODEL_PATH}/final_weights_0605/3sTFace_Manual_CVI_ksevendet-resnet18-bifpn_final_8.pt"
-##RESUME_PT="${KSDET_MODEL_PATH}/final_weights_0605/3sTFace_Manual_CVI_ksevendet-resnet18-bifpn_1.pt"
-#DATASET_ROOT="${DATASET_ROOT_BASE}/${DATASET_BASE_NAME}"
-#python train_ksevendet.py --dataset ${DATASET_NAME} \
-#    --dataset_root $DATASET_ROOT \
-#    --dataset_type $DATASET_TYPE \
-#    --model_config $MODEL_CONFIG \
-#    --resume $RESUME_PT \
-#    --input_shape $INPUT_SHAPE \
-#    --validation_only
+#INPUT_SHAPE="320,384"
 
 #MODEL_CONFIG="config/model/ksevendet_resnet.yaml"
-#MODEL_CONFIG="config/model/ksevendet_resnet_bifpn.yaml"
-MODEL_CONFIG="config/model_3s-thermal-face/ksevendet_resnet.yaml"
+MODEL_CONFIG="config/model/ksevendet_resnet_bifpn.yaml"
+#MODEL_CONFIG="config/model_3s-thermal-face/ksevendet_resnet.yaml"
 #MODEL_CONFIG="config/model_3s-thermal-face/ksevendet_resnet_bifpn.yaml"
 BATCH_SIZE=16
+#BATCH_SIZE=24
 DATASET_ROOT="${DATASET_ROOT_BASE}/${DATASET_BASE_NAME}"
 python train_ksevendet.py --log --dataset ${DATASET_NAME} \
     --dataset_root $DATASET_ROOT \

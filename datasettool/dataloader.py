@@ -10,13 +10,6 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, utils
 from torch.utils.data.sampler import Sampler
 
-from pycocotools.coco import COCO
-if __name__ == '__main__':
-    from pyflirtools import FLIR
-else:
-    from datasettool.pyflirtools import FLIR
-
-from datasettool.cvidatatools import CVIData
 from datasettool.ksevendata_tool import KSevenData
 
 import skimage.io
@@ -966,10 +959,15 @@ class Augmenter(object):
 
 class Normalizer(object):
 
-    def __init__(self, inference_mode=False):
+    def __init__(self, inference_mode=False, **kwargs):
         # ImageNet Setting
         self.mean = np.array([[[0.485, 0.456, 0.406]]])
         self.std  = np.array([[[0.229, 0.224, 0.225]]])
+        #self.mean  = np.array([[[0.0, 0.0, 0.0]]])
+        #self.std   = np.array([[[1.0, 1.0, 1.0]]])
+        if 'logger' in kwargs:
+            kwargs['logger'].info('Normalizer.Mean  : {}'.format(self.mean))
+            kwargs['logger'].info('Normalizer.Std   : {}'.format(self.std))
         self.inference_mode = inference_mode
 
     def __call__(self, sample):

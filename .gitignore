@@ -9,7 +9,14 @@ saved/
 *.pth
 *.pt
 *.onnx
+*.avi
 
+trash/
 video/
+onnx_model/
 inference_sample/
 out_tensor/
+timm_bk/
+
+old_code_script/
+config_old/

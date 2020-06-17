@@ -292,6 +292,10 @@ class PANetFPN(nn.Module):
         # exit(0)
         return fpn_output_blobs[::-1]
 
+    def set_onnx_convert_info(self, pyramid_sizes):
+        self.convert_onnx = True
+        self.pyramid_sizes = pyramid_sizes
+
 
 class topdown_lateral_module(nn.Module):
     """Add a top-down lateral module."""

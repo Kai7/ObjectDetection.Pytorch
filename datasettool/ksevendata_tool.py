@@ -1,21 +1,17 @@
 import json
 import time
-import matplotlib.pyplot as plt
-from matplotlib.collections import PatchCollection
-from matplotlib.patches import Polygon
 import numpy as np
 import copy
 import itertools
-# from . import mask as maskUtils
 import os
 from collections import defaultdict
 import sys
-PYTHON_VERSION = sys.version_info[0]
-if PYTHON_VERSION == 2:
-    from urllib import urlretrieve
-elif PYTHON_VERSION == 3:
-    from urllib.request import urlretrieve
 
+#import matplotlib.pyplot as plt
+#from matplotlib.collections import PatchCollection
+#from matplotlib.patches import Polygon
+
+PYTHON_VERSION = sys.version_info[0]
 
 def _isArrayLike(obj):
     return hasattr(obj, '__iter__') and hasattr(obj, '__len__')
@@ -195,77 +191,77 @@ class KSevenData:
         elif type(ids) == int:
             return [self.imgs[ids]]
 
-    def showAnns(self, anns, draw_bbox=False):
-        """
-        Display the specified annotations.
-        :param anns (array of object): annotations to display
-        :return: None
-        """
-        if len(anns) == 0:
-            return 0
-        if 'segmentation' in anns[0] or 'keypoints' in anns[0]:
-            datasetType = 'instances'
-        elif 'caption' in anns[0]:
-            datasetType = 'captions'
-        else:
-            raise Exception('datasetType not supported')
-        if datasetType == 'instances':
-            ax = plt.gca()
-            ax.set_autoscale_on(False)
-            polygons = []
-            color = []
-            for ann in anns:
-                c = (np.random.random((1, 3))*0.6+0.4).tolist()[0]
-                if 'segmentation' in ann:
-                    if type(ann['segmentation']) == list:
-                        # polygon
-                        for seg in ann['segmentation']:
-                            poly = np.array(seg).reshape((int(len(seg)/2), 2))
-                            polygons.append(Polygon(poly))
-                            color.append(c)
-                    else:
-                        # mask
-                        t = self.imgs[ann['image_id']]
-                        if type(ann['segmentation']['counts']) == list:
-                            rle = maskUtils.frPyObjects([ann['segmentation']], t['height'], t['width'])
-                        else:
-                            rle = [ann['segmentation']]
-                        m = maskUtils.decode(rle)
-                        img = np.ones( (m.shape[0], m.shape[1], 3) )
-                        if ann['iscrowd'] == 1:
-                            color_mask = np.array([2.0,166.0,101.0])/255
-                        if ann['iscrowd'] == 0:
-                            color_mask = np.random.random((1, 3)).tolist()[0]
-                        for i in range(3):
-                            img[:,:,i] = color_mask[i]
-                        ax.imshow(np.dstack( (img, m*0.5) ))
-                if 'keypoints' in ann and type(ann['keypoints']) == list:
-                    # turn skeleton into zero-based index
-                    sks = np.array(self.loadCats(ann['category_id'])[0]['skeleton'])-1
-                    kp = np.array(ann['keypoints'])
-                    x = kp[0::3]
-                    y = kp[1::3]
-                    v = kp[2::3]
-                    for sk in sks:
-                        if np.all(v[sk]>0):
-                            plt.plot(x[sk],y[sk], linewidth=3, color=c)
-                    plt.plot(x[v>0], y[v>0],'o',markersize=8, markerfacecolor=c, markeredgecolor='k',markeredgewidth=2)
-                    plt.plot(x[v>1], y[v>1],'o',markersize=8, markerfacecolor=c, markeredgecolor=c, markeredgewidth=2)
+    #def showAnns(self, anns, draw_bbox=False):
+    #    """
+    #    Display the specified annotations.
+    #    :param anns (array of object): annotations to display
+    #    :return: None
+    #    """
+    #    if len(anns) == 0:
+    #        return 0
+    #    if 'segmentation' in anns[0] or 'keypoints' in anns[0]:
+    #        datasetType = 'instances'
+    #    elif 'caption' in anns[0]:
+    #        datasetType = 'captions'
+    #    else:
+    #        raise Exception('datasetType not supported')
+    #    if datasetType == 'instances':
+    #        ax = plt.gca()
+    #        ax.set_autoscale_on(False)
+    #        polygons = []
+    #        color = []
+    #        for ann in anns:
+    #            c = (np.random.random((1, 3))*0.6+0.4).tolist()[0]
+    #            if 'segmentation' in ann:
+    #                if type(ann['segmentation']) == list:
+    #                    # polygon
+    #                    for seg in ann['segmentation']:
+    #                        poly = np.array(seg).reshape((int(len(seg)/2), 2))
+    #                        polygons.append(Polygon(poly))
+    #                        color.append(c)
+    #                else:
+    #                    # mask
+    #                    t = self.imgs[ann['image_id']]
+    #                    if type(ann['segmentation']['counts']) == list:
+    #                        rle = maskUtils.frPyObjects([ann['segmentation']], t['height'], t['width'])
+    #                    else:
+    #                        rle = [ann['segmentation']]
+    #                    m = maskUtils.decode(rle)
+    #                    img = np.ones( (m.shape[0], m.shape[1], 3) )
+    #                    if ann['iscrowd'] == 1:
+    #                        color_mask = np.array([2.0,166.0,101.0])/255
+    #                    if ann['iscrowd'] == 0:
+    #                        color_mask = np.random.random((1, 3)).tolist()[0]
+    #                    for i in range(3):
+    #                        img[:,:,i] = color_mask[i]
+    #                    ax.imshow(np.dstack( (img, m*0.5) ))
+    #            if 'keypoints' in ann and type(ann['keypoints']) == list:
+    #                # turn skeleton into zero-based index
+    #                sks = np.array(self.loadCats(ann['category_id'])[0]['skeleton'])-1
+    #                kp = np.array(ann['keypoints'])
+    #                x = kp[0::3]
+    #                y = kp[1::3]
+    #                v = kp[2::3]
+    #                for sk in sks:
+    #                    if np.all(v[sk]>0):
+    #                        plt.plot(x[sk],y[sk], linewidth=3, color=c)
+    #                plt.plot(x[v>0], y[v>0],'o',markersize=8, markerfacecolor=c, markeredgecolor='k',markeredgewidth=2)
+    #                plt.plot(x[v>1], y[v>1],'o',markersize=8, markerfacecolor=c, markeredgecolor=c, markeredgewidth=2)
 
-                if draw_bbox:
-                    [bbox_x, bbox_y, bbox_w, bbox_h] = ann['bbox']
-                    poly = [[bbox_x, bbox_y], [bbox_x, bbox_y+bbox_h], [bbox_x+bbox_w, bbox_y+bbox_h], [bbox_x+bbox_w, bbox_y]]
-                    np_poly = np.array(poly).reshape((4,2))
-                    polygons.append(Polygon(np_poly))
-                    color.append(c)
+    #            if draw_bbox:
+    #                [bbox_x, bbox_y, bbox_w, bbox_h] = ann['bbox']
+    #                poly = [[bbox_x, bbox_y], [bbox_x, bbox_y+bbox_h], [bbox_x+bbox_w, bbox_y+bbox_h], [bbox_x+bbox_w, bbox_y]]
+    #                np_poly = np.array(poly).reshape((4,2))
+    #                polygons.append(Polygon(np_poly))
+    #                color.append(c)
 
-            p = PatchCollection(polygons, facecolor=color, linewidths=0, alpha=0.4)
-            ax.add_collection(p)
-            p = PatchCollection(polygons, facecolor='none', edgecolors=color, linewidths=2)
-            ax.add_collection(p)
-        elif datasetType == 'captions':
-            for ann in anns:
-                print(ann['caption'])
+    #        p = PatchCollection(polygons, facecolor=color, linewidths=0, alpha=0.4)
+    #        ax.add_collection(p)
+    #        p = PatchCollection(polygons, facecolor='none', edgecolors=color, linewidths=2)
+    #        ax.add_collection(p)
+    #    elif datasetType == 'captions':
+    #        for ann in anns:
+    #            print(ann['caption'])
 
     def loadRes(self, resFile):
         """
@@ -328,30 +324,6 @@ class KSevenData:
         res.createIndex()
         return res
 
-    def download(self, tarDir = None, imgIds = [] ):
-        '''
-        Download COCO images from mscoco.org server.
-        :param tarDir (str): COCO results directory name
-               imgIds (list): images to be downloaded
-        :return:
-        '''
-        if tarDir is None:
-            print('Please specify target directory')
-            return -1
-        if len(imgIds) == 0:
-            imgs = self.imgs.values()
-        else:
-            imgs = self.loadImgs(imgIds)
-        N = len(imgs)
-        if not os.path.exists(tarDir):
-            os.makedirs(tarDir)
-        for i, img in enumerate(imgs):
-            tic = time.time()
-            fname = os.path.join(tarDir, img['file_name'])
-            if not os.path.exists(fname):
-                urlretrieve(img['coco_url'], fname)
-            print('downloaded {}/{} images (t={:0.1f}s)'.format(i, N, time.time()- tic))
-
     def loadNumpyAnnotations(self, data):
         """
         Convert result data from a numpy array [Nx7] where each row contains {imageID,x1,y1,w,h,score,class}
@@ -375,32 +347,32 @@ class KSevenData:
                 }]
         return ann
 
-    def annToRLE(self, ann):
-        """
-        Convert annotation which can be polygons, uncompressed RLE to RLE.
-        :return: binary mask (numpy 2D array)
-        """
-        t = self.imgs[ann['image_id']]
-        h, w = t['height'], t['width']
-        segm = ann['segmentation']
-        if type(segm) == list:
-            # polygon -- a single object might consist of multiple parts
-            # we merge all parts into one mask rle code
-            rles = maskUtils.frPyObjects(segm, h, w)
-            rle = maskUtils.merge(rles)
-        elif type(segm['counts']) == list:
-            # uncompressed RLE
-            rle = maskUtils.frPyObjects(segm, h, w)
-        else:
-            # rle
-            rle = ann['segmentation']
-        return rle
+    #def annToRLE(self, ann):
+    #    """
+    #    Convert annotation which can be polygons, uncompressed RLE to RLE.
+    #    :return: binary mask (numpy 2D array)
+    #    """
+    #    t = self.imgs[ann['image_id']]
+    #    h, w = t['height'], t['width']
+    #    segm = ann['segmentation']
+    #    if type(segm) == list:
+    #        # polygon -- a single object might consist of multiple parts
+    #        # we merge all parts into one mask rle code
+    #        rles = maskUtils.frPyObjects(segm, h, w)
+    #        rle = maskUtils.merge(rles)
+    #    elif type(segm['counts']) == list:
+    #        # uncompressed RLE
+    #        rle = maskUtils.frPyObjects(segm, h, w)
+    #    else:
+    #        # rle
+    #        rle = ann['segmentation']
+    #    return rle
 
-    def annToMask(self, ann):
-        """
-        Convert annotation which can be polygons, uncompressed RLE, or RLE to binary mask.
-        :return: binary mask (numpy 2D array)
-        """
-        rle = self.annToRLE(ann)
-        m = maskUtils.decode(rle)
-        return m
+    #def annToMask(self, ann):
+    #    """
+    #    Convert annotation which can be polygons, uncompressed RLE, or RLE to binary mask.
+    #    :return: binary mask (numpy 2D array)
+    #    """
+    #    rle = self.annToRLE(ann)
+    #    m = maskUtils.decode(rle)
+    #    return m

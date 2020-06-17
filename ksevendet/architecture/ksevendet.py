@@ -10,7 +10,7 @@ from ksevendet.architecture.losses import FocalLoss
 
 # from architectures.backbone import shufflenetv2, densenet, mnasnet, mobilenet
 from ksevendet.architecture.backbone import shufflenetv2, mobilenetv2, mobilenetv3, efficientnet, resnet, densenet, res2net, senet, sknet
-from ksevendet.architecture.neck import FPN, PANetFPN, BiFPN
+from ksevendet.architecture.neck import FPN, PANetFPN, BiFPN, TFDBiFPN, BiFPNORG
 from ksevendet.architecture.head import Regressor, Classifier, RegressorV1, RegressorV2, ClassifierV1, ClassifierV2
 
 import ksevendet.architecture.backbone.registry as registry
@@ -28,6 +28,7 @@ class KSevenDet(nn.Module):
         self.num_classes = num_classes
         self.backbone_feature_pyramid_levels = cfg['backbone_feature_pyramid_levels']
         self.neck_feature_pyramid_levels     = cfg['neck_feature_pyramid_levels']
+        self.head_feature_pyramid_levels     = cfg['head_feature_pyramid_levels']
         self.build_config = cfg
         self.iou_threshold = iou_threshold
 
@@ -65,23 +66,47 @@ class KSevenDet(nn.Module):
             # bifpn_attention = cfg.get('bifpn_attention', False)
             bifpn_repeats = cfg['neck_config']['bifpn_repeats']
             bifpn_attention = cfg['neck_config']['bifpn_attention']
+            #_bifpn_modules = [BiFPN(_feature_channels, 
+            #                        in_pyramid_levels=self.backbone_feature_pyramid_levels, 
+            #                        neck_pyramid_levels=self.neck_feature_pyramid_levels,
+            #                        out_pyramid_levels=self.head_feature_pyramid_levels,
+            #                        features_num=fpn_features_num,
+            #                        first_time=True if _ == 0 else False,
+            #                        attention=bifpn_attention,
+            #                        logger=logger)
+            #                        for _ in range(bifpn_repeats)]
+            #self.neck = nn.Sequential(*_bifpn_modules)
+            self.neck = BiFPN(_feature_channels, 
+                              in_pyramid_levels=self.backbone_feature_pyramid_levels, 
+                              neck_pyramid_levels=self.neck_feature_pyramid_levels,
+                              out_pyramid_levels=self.head_feature_pyramid_levels,
+                              features_num=fpn_features_num,
+                              repeats=bifpn_repeats,
+                              attention=bifpn_attention,
+                              logger=logger)
+        elif cfg['neck'] == 'tfdbifpn':
+            # bifpn_repeats = cfg.get('bifpn_repeats', 2)
+            # bifpn_attention = cfg.get('bifpn_attention', False)
+            bifpn_repeats = cfg['neck_config']['bifpn_repeats']
+            bifpn_attention = cfg['neck_config']['bifpn_attention']
             if logger:
-                logger.info(f'==== Build Neck Layer ====================')
+                logger.info(f'==== Build Neck Layer (TFD) ====================')
                 logger.info(f'BiFPN Repeats: {bifpn_repeats}')
-            _bifpn_modules = [BiFPN(_feature_channels, 
-                                    in_pyramid_levels=self.backbone_feature_pyramid_levels, 
-                                    out_pyramid_levels=self.neck_feature_pyramid_levels,
-                                    features_num=fpn_features_num,
-                                    first_time=True if _ == 0 else False,
-                                    attention=bifpn_attention,
-                                    logger=logger)
-                                    for _ in range(bifpn_repeats)]
+            _bifpn_modules = [TFDBiFPN(_feature_channels, 
+                                       in_pyramid_levels=self.backbone_feature_pyramid_levels, 
+                                       neck_pyramid_levels=self.neck_feature_pyramid_levels,
+                                       out_pyramid_levels=self.head_feature_pyramid_levels,
+                                       features_num=fpn_features_num,
+                                       first_time=True if _ == 0 else False,
+                                       attention=bifpn_attention,
+                                       logger=logger)
+                                       for _ in range(bifpn_repeats)]
             self.neck = nn.Sequential(*_bifpn_modules)
         else:
             raise ValueError(f'Unknown neck {cfg["neck"]}')
 
         # my_pyramid_levels = [3, 4, 5, 6, 7]
-        my_pyramid_levels = self.neck_feature_pyramid_levels
+        my_pyramid_levels = self.head_feature_pyramid_levels
         my_strides = [2 ** x for x in my_pyramid_levels]
         # my_sizes   = [2 ** (x + 2) for x in my_pyramid_levels]
         #my_sizes   = [2 ** (x + 1) * 1.5 for x in my_pyramid_levels]
@@ -101,13 +126,15 @@ class KSevenDet(nn.Module):
         #                       ratios=my_ratios,
         #                       scales=my_scales,
         #                       **kwargs)
-        self.anchors = Anchors(pyramid_levels=self.neck_feature_pyramid_levels, logger=logger, 
+        self.anchors = Anchors(pyramid_levels=self.head_feature_pyramid_levels, logger=logger, 
                                **cfg['anchors_config'])
         # self.anchors = Anchors()
 
         self.head_version = 1
-        self.regressor = Regressor(fpn_features_num, num_anchors=my_num_anchors, logger=logger, **cfg['head_config'])
-        self.classifier = Classifier(fpn_features_num, num_anchors=my_num_anchors, num_classes=self.num_classes, logger=logger, **cfg['head_config'])
+        self.regressor  = Regressor(fpn_features_num, num_anchors=my_num_anchors, 
+                                    num_pyramid_levels=len(self.head_feature_pyramid_levels), logger=logger, **cfg['head_config'])
+        self.classifier = Classifier(fpn_features_num, num_anchors=my_num_anchors, num_classes=self.num_classes, 
+                                     num_pyramid_levels=len(self.head_feature_pyramid_levels), logger=logger, **cfg['head_config'])
 
 
         self.regressBoxes = BBoxTransform()
@@ -281,12 +308,13 @@ class KSevenDet(nn.Module):
         for s in self.anchors.strides:
             _fixed_size = ( int(h/s), int(w/s) ) 
             pyramid_sizes.append(_fixed_size)
-        if self.build_config['neck'] == 'bifpn':
-            for m in self.neck:
-                m.convert_onnx = True
-                m.pyramid_sizes = pyramid_sizes
-        else:
-            self.neck.convert_onnx = True
-            self.neck.pyramid_sizes = pyramid_sizes
+        #if self.build_config['neck'] == 'bifpn':
+        #    for m in self.neck:
+        #        m.convert_onnx = True
+        #        m.pyramid_sizes = pyramid_sizes
+        #else:
+        #    self.neck.convert_onnx = True
+        #    self.neck.pyramid_sizes = pyramid_sizes
+        self.neck.set_onnx_convert_info(pyramid_sizes)
         self.regressor.convert_onnx = True
         self.classifier.convert_onnx = True

@@ -306,6 +306,7 @@ def main():
         
         classification, regression = ort_outs
 
+        # this is wrong code?
         anchors = pytorch_model.anchors(a_img)
         # print(anchors)
         # print(anchors.shape)
