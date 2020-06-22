@@ -35,6 +35,8 @@ from distiller import create_png
 from distiller import model_find_module_name
 from distiller import SummaryGraph
 
+import copy
+
 import pdb
 
 assert torch.__version__.split('.')[0] == '1'
@@ -423,7 +425,7 @@ def main():
     g = SummaryGraph(net_model, sample_input)
     print(type(g))
 
-    SAVE_GRAPH_IMAGE = True
+    SAVE_GRAPH_IMAGE = False 
     if SAVE_GRAPH_IMAGE:
         import io
         png = create_png(g)
@@ -437,10 +439,10 @@ def main():
 
 
     ops_keys = list(g.ops.keys())
-    for k in ops_keys[:10]:
-        print('({})  {}'.format(g.ops[k]['type'], g.ops[k]['name']))
-        print('  In  : {}'.format(str(g.ops[k]['inputs'])))
-        print('  Out : {}'.format(str(g.ops[k]['outputs'])))
+    #for k in ops_keys[:10]:
+    #    print('({})  {}'.format(g.ops[k]['type'], g.ops[k]['name']))
+    #    print('  In  : {}'.format(str(g.ops[k]['inputs'])))
+    #    print('  Out : {}'.format(str(g.ops[k]['outputs'])))
 
     ops_type_map = collections.defaultdict(list)
     for k in ops_keys:
@@ -459,13 +461,118 @@ def main():
                  'Relu', 'MaxPool', 'Add', 'Constant', 'Upsample', 'Transpose', 'Reshape', 'Concat', 'Sigmoid']
 
     SHOW_TYPE = 'Transpose'
-    for _op in ops_type_map[SHOW_TYPE]:
-        print('({})  {}'.format(_op['type'], _op['name']))
-        print('  In  ({}): {}'.format(len(_op['inputs']), str(_op['inputs'])))
-        print('  Out ({}): {}'.format(len(_op['outputs']), str(_op['outputs'])))
+    #for _op in ops_type_map[SHOW_TYPE]:
+    #    print('({})  {}'.format(_op['type'], _op['name']))
+    #    print('  In  ({}): {}'.format(len(_op['inputs']), str(_op['inputs'])))
+    #    print('  Out ({}): {}'.format(len(_op['outputs']), str(_op['outputs'])))
 
-    
+
+    # from distiller.summary_graph import SummaryGraph
+
     equivalence_shape_tensors_map = dict()
+    equivalence_shape_tensors_map_inverse = dict()
+    # Remove ReLU
+    print('Start remove ReLU...')
+    refine_ops   = copy.deepcopy(g.ops)
+    refine_param = copy.deepcopy(g.params) 
+    refine_edges = copy.deepcopy(g.edges)
+    for op in refine_ops.values():
+        if not op['type'] == 'Relu':
+            continue
+        print()
+        print(op['name'])
+        t_in  = op['inputs'][0]
+        t_out = op['outputs'][0]
+
+        _tmp_new_e = []
+        for edge in refine_edges:
+            if edge.src == t_out:
+                print(edge)
+                new_edge = SummaryGraph.Edge(t_in, edge.dst)
+                _tmp_new_e.append(new_edge)
+                refine_edges.append(new_edge)
+        #print(_tmp_new_e)
+
+        #equivalence_shape_tensors_map[op['inputs'][0]]  = t_merge 
+        #equivalence_shape_tensors_map[op['outputs'][0]] = t_merge
+        #equivalence_shape_tensors_map_inverse[t_merge] = set() 
+        #equivalence_shape_tensors_map_inverse[t_merge].add(op['inputs'][0])
+        #equivalence_shape_tensors_map_inverse[t_merge].add(op['outputs'][0])
+        #else:
+        #    assert 0, 'to check ....'
+    exit(0)
+
+    # Fuse Conv & BN
+
+    # Remove Add
+
+    # Modify Ops, Params, Edges 
+    tmp_op_nodes = [op['name'] for op in g.ops.values()] 
+    tmp_data_nodes  = []
+    tmp_param_nodes = []
+    for t_id, t_param in g.params.items():
+        n_data = (t_id, str(t_param['shape']))
+        if data_node_has_parent(g, t_id):
+            tmp_data_nodes.append(n_data)
+        else:
+            tmp_param_nodes.append(n_data)
+    tmp_edges = g.edges
+
+    display_param_nodes = False
+    if not display_param_nodes:
+        # Use only the edges that don't have a parameter source
+        non_param_ids = tmp_op_nodes + [dn[0] for dn in tmp_data_nodes]
+        INPUT_TENSOR_ID = 'input.1'
+        non_param_ids.append(INPUT_TENSOR_ID)
+        tmp_edges = [edge for edge in g.edges if edge.src in non_param_ids]
+        tmp_param_nodes = None
+
+    op_nodes_desc = [(op['name'], op['type'], *annotate_op_node(op)) for op in sgraph.ops.values()]
+    pydot_graph = create_pydot_graph(op_nodes_desc, data_nodes, param_nodes, edges, rankdir, styles)
+    png = pydot_graph.create_png()
+
+    """Create a PNG object containing a graphiz-dot graph of the network,
+    as represented by SummaryGraph 'sgraph'.
+
+    Args:
+        sgraph (SummaryGraph): the SummaryGraph instance to draw.
+        display_param_nodes (boolean): if True, draw the parameter nodes
+        rankdir: diagram direction.  'TB'/'BT' is Top-to-Bottom/Bottom-to-Top
+                 'LR'/'R/L' is Left-to-Rt/Rt-to-Left
+        styles: a dictionary of styles.  Key is module name.  Value is
+                a legal pydot style dictionary.  For example:
+                styles['conv1'] = {'shape': 'oval',
+                                   'fillcolor': 'gray',
+                                   'style': 'rounded, filled'}
+    """
+
+    def annotate_op_node(op):
+        if op['type'] == 'Conv':
+            return ["sh={}".format(distiller.size2str(op['attrs']['kernel_shape'])),
+                    "g={}".format(str(op['attrs']['group']))]
+        return ''   
+
+    # op_nodes = [op['name'] for op in sgraph.ops.values()]
+    # data_nodes = []
+    # param_nodes = []
+    # for id, param in sgraph.params.items():
+    #     n_data = (id, str(distiller.volume(param['shape'])), str(param['shape']))
+    #     if data_node_has_parent(sgraph, id):
+    #         data_nodes.append(n_data)
+    #     else:
+    #         param_nodes.append(n_data)
+    # edges = sgraph.edges
+
+    # if not display_param_nodes:
+    #     # Use only the edges that don't have a parameter source
+    #     non_param_ids = op_nodes + [dn[0] for dn in data_nodes]
+    #     edges = [edge for edge in sgraph.edges if edge.src in non_param_ids]
+    #     param_nodes = None
+
+    # op_nodes_desc = [(op['name'], op['type'], *annotate_op_node(op)) for op in sgraph.ops.values()]
+    # pydot_graph = create_pydot_graph(op_nodes_desc, data_nodes, param_nodes, edges, rankdir, styles)
+    # png = pydot_graph.create_png()
+    # return png
 
     pdb.set_trace()
 
@@ -477,6 +584,11 @@ def main():
 
 
 
+def data_node_has_parent(graph, t_id):
+    for edge in graph.edges:
+        if edge.dst == t_id:
+            return True
+    return False
 
 
 if __name__ == '__main__':
