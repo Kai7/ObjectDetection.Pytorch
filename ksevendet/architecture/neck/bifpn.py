@@ -25,6 +25,377 @@ illustration of a minimal bifpn unit
     P3_0 -------------------------> P3_2 -------->
 """
 
+class SeparableConvBlock(nn.Module):
+    """
+    created by Zylo117
+    """
+
+    # def __init__(self, in_channels, out_channels=None, norm=True, activation=False, onnx_export=False):
+    def __init__(self, in_channels, out_channels=None, norm=True, activation=True, act_func='relu', onnx_export=True):
+        super(SeparableConvBlock, self).__init__()
+        if out_channels is None:
+            out_channels = in_channels
+
+        # Q: whether separate conv
+        #  share bias between depthwise_conv and pointwise_conv
+        #  or just pointwise_conv apply bias.
+        # A: Confirmed, just pointwise_conv applies bias, depthwise_conv has no bias.
+
+        # self.depthwise_conv = Conv2dStaticSamePadding(in_channels, in_channels,
+        #                                               kernel_size=3, stride=1, groups=in_channels, bias=False)
+        # self.pointwise_conv = Conv2dStaticSamePadding(in_channels, out_channels, kernel_size=1, stride=1)
+        self.depthwise_conv = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1, bias=False, groups=in_channels)
+        self.pointwise_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
+
+        self.norm = norm
+        if self.norm:
+            # Warning: pytorch momentum is different from tensorflow's, momentum_pytorch = 1 - momentum_tensorflow
+            self.bn = nn.BatchNorm2d(num_features=out_channels, momentum=0.01, eps=1e-3)
+
+        self.activation = activation
+        if self.activation:
+            if act_func == 'swish':
+                self.act_func = MemoryEfficientSwish() if not onnx_export else Swish()
+            elif act_func == 'relu':
+                self.act_func = nn.ReLU()
+            else:
+                assert 0, f'Unknown act_func: {act_func}'
+
+    def forward(self, x):
+        x = self.depthwise_conv(x)
+        x = self.pointwise_conv(x)
+
+        if self.norm:
+            x = self.bn(x)
+
+        if self.activation:
+            x = self.act_func(x)
+
+        return x
+
+class BiFPN(nn.Module):
+    def __init__(self, backbone_features_num, in_pyramid_levels=[3,4,5], neck_pyramid_levels=[3,4,5,6,7], out_pyramid_levels=[3,4,5,6,7], 
+                 features_num=64, repeats=3, attention=False, act_func='relu', epsilon=1e-4, onnx_export=True, **kwargs):
+        assert act_func in ['relu', 'swish'], f'Unknown act_func: {act_func}'
+        higher_pyramid_levels_num = len(neck_pyramid_levels) - len(in_pyramid_levels) 
+        assert higher_pyramid_levels_num <= 2, 'Higher pyramid levels num is too large.'
+        assert higher_pyramid_levels_num >= 1, 'Higher pyramid levels num is too small.'
+        super(BiFPN, self).__init__()
+        self.convert_onnx = False
+        self.pyramid_sizes = None
+
+        in_pyramid_num   = len(in_pyramid_levels)
+        neck_pyramid_num = len(neck_pyramid_levels)
+        out_pyramid_num  = len(out_pyramid_levels)
+        self.in_pyramid_num   = in_pyramid_num
+        self.neck_pyramid_num = neck_pyramid_num
+        self.out_pyramid_num  = out_pyramid_num
+        self.out_neck_pyramid_idx = list()
+        for idx, p in enumerate(neck_pyramid_levels):
+            if p in out_pyramid_levels:
+                self.out_neck_pyramid_idx.append(idx)
+
+        logger = kwargs.get('logger', None)
+        if logger:
+            logger.info(f'==== Build Neck Layer ====================')
+            logger.info('Build Neck: BiFPN')
+
+            logger.info(f'BiFPN Repeats: {repeats}')
+            logger.info(f'Backbone Features Num: {backbone_features_num}')
+            logger.info(f'Features Num: {features_num}')
+            logger.info(f'Attention: {attention}')
+            logger.info(f'In   Pyramid Levels  : {in_pyramid_levels}   ( Num: {in_pyramid_num})')
+            logger.info(f'Neck Pyramid Levels  : {neck_pyramid_levels}   ( Num: {neck_pyramid_num})')
+            logger.info(f'Out  Pyramid Levels  : {out_pyramid_levels}   ( Num: {out_pyramid_num})')
+            logger.info(f'Out Neck Pyramid Idx : {self.out_neck_pyramid_idx}')
+
+        _bifpn_modules = [BiFPNModule(backbone_features_num, 
+                                      in_pyramid_levels=in_pyramid_levels, 
+                                      neck_pyramid_levels=neck_pyramid_levels,
+                                      out_pyramid_levels=out_pyramid_levels if idx == repeats - 1 else neck_pyramid_levels,
+                                      features_num=features_num,
+                                      index=idx,
+                                      first_time=True if idx == 0 else False,
+                                      last_time=True if idx == repeats - 1 else False,
+                                      attention=attention,
+                                      logger=logger)
+                                      for idx in range(repeats)]
+        self.bifpn_modules = nn.Sequential(*_bifpn_modules)
+
+    def forward(self, inputs):
+        return self.bifpn_modules(inputs)
+
+    def set_onnx_convert_info(self, pyramid_sizes):
+        self.convert_onnx = True
+        self.pyramid_sizes = pyramid_sizes
+        for m in self.bifpn_modules:
+            m.convert_onnx = True
+            m.pyramid_sizes = pyramid_sizes
+
+class BiFPNModule(nn.Module):
+    """
+    modified by Zylo117
+    """
+    def __init__(self, backbone_features_num, in_pyramid_levels=[3,4,5], neck_pyramid_levels=[3,4,5,6,7], out_pyramid_levels=[3,4,5,6,7], 
+                 features_num=64, attention=False, act_func='relu', 
+                 index=-1, first_time=False, last_time=False, epsilon=1e-4, onnx_export=True, **kwargs):
+        """
+        Args:
+            num_channels:
+            conv_channels:
+            first_time: whether the input comes directly from the efficientnet,
+                        if True, downchannel it first, and downsample P5 to generate P6 then P7
+            epsilon: epsilon of fast weighted attention sum of BiFPN, not the BN's epsilon
+            onnx_export: if True, use Swish instead of MemoryEfficientSwish
+        """
+        assert act_func in ['relu', 'swish'], f'Unknown act_func: {act_func}'
+        higher_pyramid_levels_num = len(neck_pyramid_levels) - len(in_pyramid_levels) 
+        assert higher_pyramid_levels_num <= 2, 'Higher pyramid levels num is too large.'
+        assert higher_pyramid_levels_num >= 1, 'Higher pyramid levels num is too small.'
+        super(BiFPNModule, self).__init__()
+        self.convert_onnx = False
+        self.pyramid_sizes = None
+
+        self.backbone_features_num = backbone_features_num
+        self.in_pyramid_levels  = in_pyramid_levels
+        self.neck_pyramid_levels  = neck_pyramid_levels
+        self.out_pyramid_levels = out_pyramid_levels
+        self.features_num = features_num
+        self.attention  = attention
+        self.index      = index
+        self.first_time = first_time
+        self.last_time  = last_time
+        self.epsilon = epsilon
+
+        self.higher_pyramid_levels_num = higher_pyramid_levels_num
+        in_pyramid_num   = len(in_pyramid_levels)
+        neck_pyramid_num = len(neck_pyramid_levels)
+        out_pyramid_num  = len(out_pyramid_levels)
+        self.in_pyramid_num   = in_pyramid_num
+        self.neck_pyramid_num = neck_pyramid_num
+        self.out_pyramid_num  = out_pyramid_num
+        self.out_neck_pyramid_idx = list()
+        for idx, p in enumerate(neck_pyramid_levels):
+            if p in out_pyramid_levels:
+                self.out_neck_pyramid_idx.append(idx)
+
+        logger = kwargs.get('logger', None)
+        if logger:
+            logger.info(f'---- Build BiFPN Module [{index}] ----')
+            logger.info(f'Features Num: {features_num}')
+            logger.info(f'Attention: {attention}')
+            logger.info(f'First : {first_time}')
+            logger.info(f'Last  : {last_time}')
+            logger.info(f'In   Pyramid Levels  : {in_pyramid_levels}   ( Num: {in_pyramid_num})')
+            logger.info(f'Neck Pyramid Levels  : {neck_pyramid_levels}   ( Num: {neck_pyramid_num})')
+            logger.info(f'Out  Pyramid Levels  : {out_pyramid_levels}   ( Num: {out_pyramid_num})')
+            logger.info(f'Out Neck Pyramid Idx : {self.out_neck_pyramid_idx}')
+
+        # Conv layers
+        self.conv_up = nn.ModuleList()
+        for i in range(neck_pyramid_num-1):
+            self.conv_up.append(
+                SeparableConvBlock(features_num, activation=True, act_func=act_func, onnx_export=onnx_export)
+            )
+        self.conv_down = nn.ModuleList()
+        for i in range(neck_pyramid_num-1):
+            self.conv_down.append(
+                SeparableConvBlock(features_num, activation=True, act_func=act_func, onnx_export=onnx_export)
+            )
+
+        # Feature scaling layers
+        self.up_sample = nn.ModuleList()
+        for i in range(neck_pyramid_num-1):
+            self.up_sample.append(nn.Upsample(scale_factor=2, mode='nearest'))
+
+        self.down_sample = nn.MaxPool2d(3, stride=2, padding=1)
+
+        # self.swish = MemoryEfficientSwish() if not onnx_export else Swish()
+        if act_func == 'swish':
+            self.act_func = MemoryEfficientSwish() if not onnx_export else Swish()
+        elif act_func == 'relu':
+            self.act_func = nn.ReLU()
+
+        if self.first_time:
+            self.down_channel = nn.ModuleList()
+            for i in range(in_pyramid_num):
+                self.down_channel.append(nn.Sequential(
+                    nn.Conv2d(backbone_features_num[i], features_num, 1),
+                    nn.BatchNorm2d(features_num, momentum=0.01, eps=1e-3),
+                ))
+
+
+            if higher_pyramid_levels_num >= 1:
+                self.higher_pyramid_conv = nn.ModuleList()
+                self.higher_pyramid_conv.append(
+                    nn.Sequential(
+                        nn.Conv2d(backbone_features_num[2], features_num, 1),
+                        nn.BatchNorm2d(features_num, momentum=0.01, eps=1e-3),
+                        nn.MaxPool2d(3, stride=2, padding=1)))
+                if higher_pyramid_levels_num >= 2:
+                    self.higher_pyramid_conv.append(
+                        nn.MaxPool2d(3, stride=2, padding=1))
+
+            #self.down_channel_2 = nn.ModuleList()
+            #for i in range(in_pyramid_num - 1):
+            #    self.down_channel_2.append(
+            #        nn.Sequential(
+            #            nn.Conv2d(backbone_features_num[i+1], features_num, 1),
+            #            nn.BatchNorm2d(features_num, momentum=0.01, eps=1e-3),
+            #        )
+            #    )
+            self.down_channel_two = nn.ModuleList()
+            for i in range(in_pyramid_num - 1):
+                self.down_channel_two.append(
+                    nn.Sequential(
+                        nn.Conv2d(backbone_features_num[i+1], features_num, 1),
+                        nn.BatchNorm2d(features_num, momentum=0.01, eps=1e-3),
+                    )
+                )
+
+        # Weight
+        if self.attention:
+            # assert 0, 'not support now'
+            self.relu = nn.ReLU()
+
+            self.fuse_w_up = nn.ParameterList()
+            # p(0) ~ p(N-2)
+            for i in range(neck_pyramid_num-1):
+                self.fuse_w_up.append(nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True))
+
+            self.fuse_w_down = nn.ParameterList()
+            # p(1) ~ p(N-2)
+            for i in range(1, neck_pyramid_num-1):
+                self.fuse_w_down.append(nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True))
+            # p(N-1)
+            self.fuse_w_down.append(nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True))
+
+        self._initialize_weights(logger=logger)
+
+    def _initialize_weights(self, logger=None):
+        if logger:
+            logger.info('Initializing weights for BiFPN Module ...')
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
+    def forward(self, inputs):
+        if self.convert_onnx:
+            assert self.pyramid_sizes is not None, 'NECK[BiFPN]::pyramid_sizes must be not None'
+            print('Convert ONNX Mode at NECK[BiFPN].Module[{}]'.format(self.index))
+            for i in range(len(self.pyramid_sizes)):
+                print('[{}] Pyramid Feature Grid Size = [{:>4},{:>4}]'.format(i, *self.pyramid_sizes[i]))
+        if self.convert_onnx:
+            for i in range(self.neck_pyramid_num-1):
+                print(i)
+                self.up_sample[i].scale_factor = None
+                self.up_sample[i].size = list(self.pyramid_sizes[i])
+
+        if self.attention:
+            # assert 0, 'not support now.'
+            return self._forward_fast_attention(inputs)
+        else:
+            return self._forward(inputs)
+
+
+    def _forward(self, inputs):
+        if self.first_time:
+            feat_map_in = list()
+            for i in range(self.in_pyramid_num):
+                feat_map_in.append(self.down_channel[i](inputs[i]))
+            if self.higher_pyramid_levels_num >= 1:
+                feat_map_in.append(self.higher_pyramid_conv[0](inputs[-1]))
+                if self.higher_pyramid_levels_num >= 2:
+                    for i in range(self.higher_pyramid_levels_num - 1):
+                        feat_map_in.append(self.higher_pyramid_conv[i+1](feat_map_in[-1]))
+
+        else:
+            feat_map_in = inputs
+
+        # P_1[N-1]
+        feat_map_up = [feat_map_in[-1],]
+        # P_1[N-2], P_1[N-3], ... , P_1[0]
+        for i in range(self.neck_pyramid_num-2, -1, -1):
+            feat_map_up.insert(0, self.conv_up[i](self.act_func(feat_map_in[i] + self.up_sample[i](feat_map_up[0]))))
+
+        #if self.first_time:
+        #    for i in range(1, self.in_pyramid_num):
+        #        feat_map_in[i] = self.down_channel_2[i-1](inputs[i])
+        if self.first_time:
+            for i in range(1, self.in_pyramid_num):
+                feat_map_in[i] = self.down_channel_two[i-1](inputs[i])
+
+        # P_2[0]
+        feat_map_down = [feat_map_up[0],]
+        # P_2[1], P_2[2], ... , P_2[N-2]
+        for i in range(1, self.neck_pyramid_num-1):
+            feat_map_down.append(self.conv_down[i-1](self.act_func(
+                                feat_map_in[i] + feat_map_up[i] + self.down_sample(feat_map_down[-1]))))
+        # P_2[N-1]
+        feat_map_down.append(self.conv_down[self.neck_pyramid_num-2](self.act_func(
+                             feat_map_in[self.neck_pyramid_num-1] + self.down_sample(feat_map_down[self.neck_pyramid_num-2]))))
+
+        feat_map_out = [feat_map_down[i] for i in self.out_neck_pyramid_idx]
+
+        return feat_map_out
+
+    def _forward_fast_attention(self, inputs):
+        if self.convert_onnx:
+            assert self.pyramid_sizes is not None, 'NECK[BiFPN]::pyramid_sizes must be not None'
+            print('Convert ONNX Mode at NECK[BiFPN].Module[{}]'.format(self.index))
+            for i in range(len(self.pyramid_sizes)):
+                print('[{}] Pyramid Feature Grid Size = [{:>4},{:>4}]'.format(i, *self.pyramid_sizes[i]))
+        if self.first_time:
+            feat_map_in = list()
+            for i in range(self.in_pyramid_num):
+                feat_map_in.append(self.down_channel[i](inputs[i]))
+            if self.higher_pyramid_levels_num >= 1:
+                feat_map_in.append(self.higher_pyramid_conv[0](inputs[-1]))
+                if self.higher_pyramid_levels_num >= 2:
+                    for i in range(self.higher_pyramid_levels_num - 1):
+                        feat_map_in.append(self.higher_pyramid_conv[i+1](feat_map_in[-1]))
+        else:
+            feat_map_in = inputs
+
+        # P_1[N-1]
+        feat_map_up = [feat_map_in[-1],]
+        # P_1[N-2], P_1[N-3], ... , P_1[0]
+        for i in range(self.neck_pyramid_num-2, -1, -1):
+            fuse_w = self.relu(self.fuse_w_up[i])
+            fuse_w = fuse_w / (torch.sum(fuse_w, dim=0) + self.epsilon)
+            feat_map_up.insert(0, self.conv_up[i](self.act_func(
+                                  fuse_w[0] * feat_map_in[i] + fuse_w[1] * self.up_sample[i](feat_map_up[0]))))
+
+        if self.first_time:
+            for i in range(1, self.in_pyramid_num):
+                feat_map_in[i] = self.down_channel_2[i-1](inputs[i])
+
+        # P_2[0]
+        feat_map_down = [feat_map_up[0],]
+        # P_2[1], P_2[2], ... , P_2[N-2]
+        for i in range(1, self.neck_pyramid_num-1):
+            fuse_w = self.relu(self.fuse_w_down[i-1])
+            fuse_w = fuse_w / (torch.sum(fuse_w, dim=0) + self.epsilon)
+            feat_map_down.append(self.conv_down[i-1](self.act_func(
+                                 fuse_w[0] * feat_map_in[i] + fuse_w[1] * feat_map_up[i] + 
+                                 fuse_w[2] * self.down_sample(feat_map_down[-1]))))
+        # P_2[N-1]
+        fuse_w = self.relu(self.fuse_w_down[self.neck_pyramid_num - 2])
+        fuse_w = fuse_w / (torch.sum(fuse_w, dim=0) + self.epsilon)
+        feat_map_down.append(self.conv_down[self.neck_pyramid_num-2](self.act_func(
+                             fuse_w[0] * feat_map_in[self.neck_pyramid_num-1] + 
+                             fuse_w[1] * self.down_sample(feat_map_down[self.neck_pyramid_num-2]))))
+
+        feat_map_out = [feat_map_down[i] for i in self.out_neck_pyramid_idx]
+
+        return feat_map_out
 
 class TFDBiFPN(nn.Module):
     """
@@ -221,359 +592,6 @@ class TFDBiFPN(nn.Module):
 
         return p3_out, p4_out, p5_out, p6_out
 
-class BiFPN(nn.Module):
-    def __init__(self, backbone_features_num, in_pyramid_levels=[3,4,5], neck_pyramid_levels=[3,4,5,6,7], out_pyramid_levels=[3,4,5,6,7], 
-                 features_num=64, repeats=3, attention=False, act_func='relu', epsilon=1e-4, onnx_export=True, **kwargs):
-        assert act_func in ['relu', 'swish'], f'Unknown act_func: {act_func}'
-        higher_pyramid_levels_num = len(neck_pyramid_levels) - len(in_pyramid_levels) 
-        assert higher_pyramid_levels_num <= 2, 'Higher pyramid levels num is too large.'
-        assert higher_pyramid_levels_num >= 1, 'Higher pyramid levels num is too small.'
-        super(BiFPN, self).__init__()
-        self.convert_onnx = False
-        self.pyramid_sizes = None
-
-        in_pyramid_num   = len(in_pyramid_levels)
-        neck_pyramid_num = len(neck_pyramid_levels)
-        out_pyramid_num  = len(out_pyramid_levels)
-        self.in_pyramid_num   = in_pyramid_num
-        self.neck_pyramid_num = neck_pyramid_num
-        self.out_pyramid_num  = out_pyramid_num
-        self.out_neck_pyramid_idx = list()
-        for idx, p in enumerate(neck_pyramid_levels):
-            if p in out_pyramid_levels:
-                self.out_neck_pyramid_idx.append(idx)
-
-        logger = kwargs.get('logger', None)
-        if logger:
-            logger.info(f'==== Build Neck Layer ====================')
-            logger.info('Build Neck: BiFPN')
-
-            logger.info(f'BiFPN Repeats: {repeats}')
-            logger.info(f'Backbone Features Num: {backbone_features_num}')
-            logger.info(f'Features Num: {features_num}')
-            logger.info(f'Attention: {attention}')
-            logger.info(f'In   Pyramid Levels  : {in_pyramid_levels}   ( Num: {in_pyramid_num})')
-            logger.info(f'Neck Pyramid Levels  : {neck_pyramid_levels}   ( Num: {neck_pyramid_num})')
-            logger.info(f'Out  Pyramid Levels  : {out_pyramid_levels}   ( Num: {out_pyramid_num})')
-            logger.info(f'Out Neck Pyramid Idx : {self.out_neck_pyramid_idx}')
-
-        _bifpn_modules = [BiFPNModule(backbone_features_num, 
-                                      in_pyramid_levels=in_pyramid_levels, 
-                                      neck_pyramid_levels=neck_pyramid_levels,
-                                      out_pyramid_levels=out_pyramid_levels if idx == repeats - 1 else neck_pyramid_levels,
-                                      features_num=features_num,
-                                      index=idx,
-                                      first_time=True if idx == 0 else False,
-                                      last_time=True if idx == repeats - 1 else False,
-                                      attention=attention,
-                                      logger=logger)
-                                      for idx in range(repeats)]
-        self.bifpn_modules = nn.Sequential(*_bifpn_modules)
-
-    def forward(self, inputs):
-        return self.bifpn_modules(inputs)
-
-    def set_onnx_convert_info(self, pyramid_sizes):
-        self.convert_onnx = True
-        self.pyramid_sizes = pyramid_sizes
-        for m in self.bifpn_modules:
-            m.convert_onnx = True
-            m.pyramid_sizes = pyramid_sizes
-
-class BiFPNModule(nn.Module):
-    """
-    modified by Zylo117
-    """
-    # TODO: Support specific in_pyramid_levels and out_pyramid_levels 
-
-    # def __init__(self, num_channels, conv_channels, first_time=False, epsilon=1e-4, onnx_export=False, attention=True):
-    def __init__(self, backbone_features_num, in_pyramid_levels=[3,4,5], neck_pyramid_levels=[3,4,5,6,7], out_pyramid_levels=[3,4,5,6,7], 
-                 features_num=64, attention=False, act_func='relu', 
-                 index=-1, first_time=False, last_time=False, epsilon=1e-4, onnx_export=True, **kwargs):
-        """
-        Args:
-            num_channels:
-            conv_channels:
-            first_time: whether the input comes directly from the efficientnet,
-                        if True, downchannel it first, and downsample P5 to generate P6 then P7
-            epsilon: epsilon of fast weighted attention sum of BiFPN, not the BN's epsilon
-            onnx_export: if True, use Swish instead of MemoryEfficientSwish
-        """
-        assert act_func in ['relu', 'swish'], f'Unknown act_func: {act_func}'
-        higher_pyramid_levels_num = len(neck_pyramid_levels) - len(in_pyramid_levels) 
-        assert higher_pyramid_levels_num <= 2, 'Higher pyramid levels num is too large.'
-        assert higher_pyramid_levels_num >= 1, 'Higher pyramid levels num is too small.'
-        super(BiFPNModule, self).__init__()
-        self.convert_onnx = False
-        self.pyramid_sizes = None
-
-        self.backbone_features_num = backbone_features_num
-        self.in_pyramid_levels  = in_pyramid_levels
-        self.neck_pyramid_levels  = neck_pyramid_levels
-        self.out_pyramid_levels = out_pyramid_levels
-        self.features_num = features_num
-        self.attention  = attention
-        self.index      = index
-        self.first_time = first_time
-        self.last_time  = last_time
-        self.epsilon = epsilon
-
-        self.higher_pyramid_levels_num = higher_pyramid_levels_num
-        in_pyramid_num   = len(in_pyramid_levels)
-        neck_pyramid_num = len(neck_pyramid_levels)
-        out_pyramid_num  = len(out_pyramid_levels)
-        self.in_pyramid_num   = in_pyramid_num
-        self.neck_pyramid_num = neck_pyramid_num
-        self.out_pyramid_num  = out_pyramid_num
-        self.out_neck_pyramid_idx = list()
-        for idx, p in enumerate(neck_pyramid_levels):
-            if p in out_pyramid_levels:
-                self.out_neck_pyramid_idx.append(idx)
-
-        logger = kwargs.get('logger', None)
-        if logger:
-            logger.info(f'---- Build BiFPN Module [{index}] ----')
-            logger.info(f'Features Num: {features_num}')
-            logger.info(f'Attention: {attention}')
-            logger.info(f'First : {first_time}')
-            logger.info(f'Last  : {last_time}')
-            logger.info(f'In   Pyramid Levels  : {in_pyramid_levels}   ( Num: {in_pyramid_num})')
-            logger.info(f'Neck Pyramid Levels  : {neck_pyramid_levels}   ( Num: {neck_pyramid_num})')
-            logger.info(f'Out  Pyramid Levels  : {out_pyramid_levels}   ( Num: {out_pyramid_num})')
-            logger.info(f'Out Neck Pyramid Idx : {self.out_neck_pyramid_idx}')
-
-        # Conv layers
-        self.conv_up = nn.ModuleList()
-        for i in range(neck_pyramid_num-1):
-            self.conv_up.append(
-                SeparableConvBlock(features_num, activation=True, act_func=act_func, onnx_export=onnx_export)
-            )
-        self.conv_down = nn.ModuleList()
-        for i in range(neck_pyramid_num-1):
-            self.conv_down.append(
-                SeparableConvBlock(features_num, activation=True, act_func=act_func, onnx_export=onnx_export)
-            )
-
-        # Feature scaling layers
-        self.up_sample = nn.ModuleList()
-        for i in range(neck_pyramid_num-1):
-            self.up_sample.append(nn.Upsample(scale_factor=2, mode='nearest'))
-
-        self.down_sample = nn.MaxPool2d(3, stride=2, padding=1)
-
-        # self.swish = MemoryEfficientSwish() if not onnx_export else Swish()
-        if act_func == 'swish':
-            self.act_func = MemoryEfficientSwish() if not onnx_export else Swish()
-        elif act_func == 'relu':
-            self.act_func = nn.ReLU()
-
-        if self.first_time:
-            self.down_channel = nn.ModuleList()
-            for i in range(in_pyramid_num):
-                self.down_channel.append(nn.Sequential(
-                    nn.Conv2d(backbone_features_num[i], features_num, 1),
-                    nn.BatchNorm2d(features_num, momentum=0.01, eps=1e-3),
-                ))
-
-
-            if higher_pyramid_levels_num >= 1:
-                self.higher_pyramid_conv = nn.ModuleList()
-                self.higher_pyramid_conv.append(
-                    nn.Sequential(
-                        nn.Conv2d(backbone_features_num[2], features_num, 1),
-                        nn.BatchNorm2d(features_num, momentum=0.01, eps=1e-3),
-                        nn.MaxPool2d(3, stride=2, padding=1)))
-                if higher_pyramid_levels_num >= 2:
-                    self.higher_pyramid_conv.append(
-                        nn.MaxPool2d(3, stride=2, padding=1))
-
-            self.down_channel_2 = nn.ModuleList()
-            for i in range(in_pyramid_num - 1):
-                self.down_channel_2.append(
-                    nn.Sequential(
-                        nn.Conv2d(backbone_features_num[i+1], features_num, 1),
-                        nn.BatchNorm2d(features_num, momentum=0.01, eps=1e-3),
-                    )
-                )
-
-        # Weight
-        if self.attention:
-            # assert 0, 'not support now'
-            self.relu = nn.ReLU()
-
-            #self.fuse_w_up = nn.ModuleList()
-            #self.fuse_w_up = list() 
-            self.fuse_w_up = nn.ParameterList()
-            # p(0) ~ p(N-2)
-            for i in range(neck_pyramid_num-1):
-                self.fuse_w_up.append(nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True))
-
-            # self.fuse_w_down = nn.ModuleList()
-            # self.fuse_w_down = list()
-            self.fuse_w_down = nn.ParameterList()
-            # p(1) ~ p(N-2)
-            for i in range(1, neck_pyramid_num-1):
-                self.fuse_w_down.append(nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True))
-            # p(N-1)
-            self.fuse_w_down.append(nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True))
-
-            
-            #self.p6_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
-            #self.p6_w1_relu = nn.ReLU()
-            #self.p5_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
-            #self.p5_w1_relu = nn.ReLU()
-            #self.p4_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
-            #self.p4_w1_relu = nn.ReLU()
-            #self.p3_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
-            #self.p3_w1_relu = nn.ReLU()
-
-            #self.p4_w2 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
-            #self.p4_w2_relu = nn.ReLU()
-            #self.p5_w2 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
-            #self.p5_w2_relu = nn.ReLU()
-            #self.p6_w2 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
-            #self.p6_w2_relu = nn.ReLU()
-            #self.p7_w2 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
-            #self.p7_w2_relu = nn.ReLU()
-
-        self._initialize_weights(logger=logger)
-
-    def _initialize_weights(self, logger=None):
-        if logger:
-            logger.info('Initializing weights for BiFPN Module ...')
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-
-    def forward(self, inputs):
-        if self.convert_onnx:
-            assert self.pyramid_sizes is not None, 'NECK[BiFPN]::pyramid_sizes must be not None'
-            print('Convert ONNX Mode at NECK[BiFPN].Module[{}]'.format(self.index))
-            for i in range(len(self.pyramid_sizes)):
-                print('[{}] Pyramid Feature Grid Size = [{:>4},{:>4}]'.format(i, *self.pyramid_sizes[i]))
-        if self.convert_onnx:
-            for i in range(self.neck_pyramid_num-1):
-                self.up_sample[i].scale_factor = None
-                self.up_sample[i].size = list(self.pyramid_sizes[i])
-        #if self.convert_onnx:
-        #    assert self.pyramid_sizes is not None, 'NECK[BiFPN]::pyramid_sizes must be not None'
-        #    print('Convert ONNX Mode at NECK[BiFPN].Module[{}]'.format(self.index))
-        #    for i in range(len(self.pyramid_sizes)):
-        #        print('[{}] Pyramid Feature Grid Size = [{:>4},{:>4}]'.format(i, *self.pyramid_sizes[i]))
-        #if self.first_time:
-        #    feat_map_in = list()
-        #    for i in range(self.in_pyramid_num):
-        #        feat_map_in.append(self.down_channel[i](inputs[i]))
-        #    if self.higher_pyramid_levels_num >= 1:
-        #        feat_map_in.append(self.higher_pyramid_conv[0](inputs[-1]))
-        #        if self.higher_pyramid_levels_num >= 2:
-        #            for i in range(self.higher_pyramid_levels_num - 1):
-        #                feat_map_in.append(self.higher_pyramid_conv[i+1](feat_map_in[-1]))
-        #else:
-        #    feat_map_in = inputs
-
-        if self.attention:
-            # assert 0, 'not support now.'
-            return self._forward_fast_attention(inputs)
-        else:
-            return self._forward(inputs)
-
-
-    def _forward(self, inputs):
-        if self.first_time:
-            feat_map_in = list()
-            for i in range(self.in_pyramid_num):
-                feat_map_in.append(self.down_channel[i](inputs[i]))
-            if self.higher_pyramid_levels_num >= 1:
-                feat_map_in.append(self.higher_pyramid_conv[0](inputs[-1]))
-                if self.higher_pyramid_levels_num >= 2:
-                    for i in range(self.higher_pyramid_levels_num - 1):
-                        feat_map_in.append(self.higher_pyramid_conv[i+1](feat_map_in[-1]))
-
-        else:
-            feat_map_in = inputs
-
-        # P_1[N-1]
-        feat_map_up = [feat_map_in[-1],]
-        # P_1[N-2], P_1[N-3], ... , P_1[0]
-        for i in range(self.neck_pyramid_num-2, -1, -1):
-            feat_map_up.insert(0, self.conv_up[i](self.act_func(feat_map_in[i] + self.up_sample[i](feat_map_up[0]))))
-
-        if self.first_time:
-            for i in range(1, self.in_pyramid_num):
-                feat_map_in[i] = self.down_channel_2[i-1](inputs[i])
-
-        # P_2[0]
-        feat_map_down = [feat_map_up[0],]
-        # P_2[1], P_2[2], ... , P_2[N-2]
-        for i in range(1, self.neck_pyramid_num-1):
-            feat_map_down.append(self.conv_down[i-1](self.act_func(
-                                feat_map_in[i] + feat_map_up[i] + self.down_sample(feat_map_down[-1]))))
-        # P_2[N-1]
-        feat_map_down.append(self.conv_down[self.neck_pyramid_num-2](self.act_func(
-                             feat_map_in[self.neck_pyramid_num-1] + self.down_sample(feat_map_down[self.neck_pyramid_num-2]))))
-
-        feat_map_out = [feat_map_down[i] for i in self.out_neck_pyramid_idx]
-
-        return feat_map_out
-
-    def _forward_fast_attention(self, inputs):
-        if self.convert_onnx:
-            assert self.pyramid_sizes is not None, 'NECK[BiFPN]::pyramid_sizes must be not None'
-            print('Convert ONNX Mode at NECK[BiFPN].Module[{}]'.format(self.index))
-            for i in range(len(self.pyramid_sizes)):
-                print('[{}] Pyramid Feature Grid Size = [{:>4},{:>4}]'.format(i, *self.pyramid_sizes[i]))
-        if self.first_time:
-            feat_map_in = list()
-            for i in range(self.in_pyramid_num):
-                feat_map_in.append(self.down_channel[i](inputs[i]))
-            if self.higher_pyramid_levels_num >= 1:
-                feat_map_in.append(self.higher_pyramid_conv[0](inputs[-1]))
-                if self.higher_pyramid_levels_num >= 2:
-                    for i in range(self.higher_pyramid_levels_num - 1):
-                        feat_map_in.append(self.higher_pyramid_conv[i+1](feat_map_in[-1]))
-        else:
-            feat_map_in = inputs
-
-        # P_1[N-1]
-        feat_map_up = [feat_map_in[-1],]
-        # P_1[N-2], P_1[N-3], ... , P_1[0]
-        for i in range(self.neck_pyramid_num-2, -1, -1):
-            fuse_w = self.relu(self.fuse_w_up[i])
-            fuse_w = fuse_w / (torch.sum(fuse_w, dim=0) + self.epsilon)
-            feat_map_up.insert(0, self.conv_up[i](self.act_func(
-                                  fuse_w[0] * feat_map_in[i] + fuse_w[1] * self.up_sample[i](feat_map_up[0]))))
-
-        if self.first_time:
-            for i in range(1, self.in_pyramid_num):
-                feat_map_in[i] = self.down_channel_2[i-1](inputs[i])
-
-        # P_2[0]
-        feat_map_down = [feat_map_up[0],]
-        # P_2[1], P_2[2], ... , P_2[N-2]
-        for i in range(1, self.neck_pyramid_num-1):
-            fuse_w = self.relu(self.fuse_w_down[i-1])
-            fuse_w = fuse_w / (torch.sum(fuse_w, dim=0) + self.epsilon)
-            feat_map_down.append(self.conv_down[i-1](self.act_func(
-                                 fuse_w[0] * feat_map_in[i] + fuse_w[1] * feat_map_up[i] + 
-                                 fuse_w[2] * self.down_sample(feat_map_down[-1]))))
-        # P_2[N-1]
-        fuse_w = self.relu(self.fuse_w_down[self.neck_pyramid_num - 2])
-        fuse_w = fuse_w / (torch.sum(fuse_w, dim=0) + self.epsilon)
-        feat_map_down.append(self.conv_down[self.neck_pyramid_num-2](self.act_func(
-                             fuse_w[0] * feat_map_in[self.neck_pyramid_num-1] + 
-                             fuse_w[1] * self.down_sample(feat_map_down[self.neck_pyramid_num-2]))))
-
-        feat_map_out = [feat_map_down[i] for i in self.out_neck_pyramid_idx]
-
-        return feat_map_out
 
 class BiFPNORG(nn.Module):
     """
@@ -895,53 +913,6 @@ class Swish(nn.Module):
         return x * torch.sigmoid(x)
 
 
-class SeparableConvBlock(nn.Module):
-    """
-    created by Zylo117
-    """
-
-    # def __init__(self, in_channels, out_channels=None, norm=True, activation=False, onnx_export=False):
-    def __init__(self, in_channels, out_channels=None, norm=True, activation=True, act_func='relu', onnx_export=True):
-        super(SeparableConvBlock, self).__init__()
-        if out_channels is None:
-            out_channels = in_channels
-
-        # Q: whether separate conv
-        #  share bias between depthwise_conv and pointwise_conv
-        #  or just pointwise_conv apply bias.
-        # A: Confirmed, just pointwise_conv applies bias, depthwise_conv has no bias.
-
-        # self.depthwise_conv = Conv2dStaticSamePadding(in_channels, in_channels,
-        #                                               kernel_size=3, stride=1, groups=in_channels, bias=False)
-        # self.pointwise_conv = Conv2dStaticSamePadding(in_channels, out_channels, kernel_size=1, stride=1)
-        self.depthwise_conv = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1, bias=False, groups=in_channels)
-        self.pointwise_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
-
-        self.norm = norm
-        if self.norm:
-            # Warning: pytorch momentum is different from tensorflow's, momentum_pytorch = 1 - momentum_tensorflow
-            self.bn = nn.BatchNorm2d(num_features=out_channels, momentum=0.01, eps=1e-3)
-
-        self.activation = activation
-        if self.activation:
-            if act_func == 'swish':
-                self.act_func = MemoryEfficientSwish() if not onnx_export else Swish()
-            elif act_func == 'relu':
-                self.act_func = nn.ReLU()
-            else:
-                assert 0, f'Unknown act_func: {act_func}'
-
-    def forward(self, x):
-        x = self.depthwise_conv(x)
-        x = self.pointwise_conv(x)
-
-        if self.norm:
-            x = self.bn(x)
-
-        if self.activation:
-            x = self.act_func(x)
-
-        return x
 
 
 # class Conv2dStaticSamePadding(nn.Module):

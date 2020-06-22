@@ -300,7 +300,8 @@ class Classifier(nn.Module):
             #feat = feat.contiguous().view(feat.shape[0], feat.shape[1], feat.shape[2], self.num_anchors,
             #                              self.num_classes)
             #feat = feat.contiguous().view(feat.shape[0], -1, self.num_classes)
-            feat = feat.contiguous().view(batch_size, width, height, self.num_anchors, self.num_classes)
+
+            #feat = feat.contiguous().view(batch_size, width, height, self.num_anchors, self.num_classes)
             feat = feat.contiguous().view(batch_size, -1, self.num_classes)
 
             feats.append(feat)
