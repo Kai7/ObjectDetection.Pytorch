@@ -268,46 +268,46 @@ def main():
     
 
     pruning_channel_conv_layers = [
-        conv_modules[1],   # backbone.conv1
+        conv_modules[1],   # backbone.layer1.0.conv1
     ]
     pruning_channel_to_filter_conv_chain = {
         conv_modules[1] : [
-            conv_modules[0],    # backbone.layer1.0.conv1
+            conv_modules[0],    # backbone.conv1
             conv_modules[2],    # backbone.layer1.0.conv2
-            conv_modules[4],    
+            conv_modules[4],    # backbone.layer1.1.conv2   
         ] ,
         conv_modules[3] : [
-            conv_modules[0],    # backbone.layer1.0.conv1
-            conv_modules[2],    # backbone.layer1.0.conv2
+            conv_modules[0],    
+            conv_modules[2],    
             conv_modules[4],    
         ] ,
         conv_modules[5] : [
-            conv_modules[0],    # backbone.layer1.0.conv1
-            conv_modules[2],    # backbone.layer1.0.conv2
+            conv_modules[0],    
+            conv_modules[2],    
             conv_modules[4],    
         ] ,
         conv_modules[7] : [
-            conv_modules[0],    # backbone.layer1.0.conv1
-            conv_modules[2],    # backbone.layer1.0.conv2
+            conv_modules[0],    
+            conv_modules[2],    
             conv_modules[4],    
         ] ,
     }
     pruning_filter_to_channel_conv_chain = {
         conv_modules[0] : [
-            conv_modules[1],    # backbone.layer1.0.conv1
-            conv_modules[3],    # backbone.layer1.0.conv2
+            conv_modules[1],    
+            conv_modules[3],    
             conv_modules[5],    
             conv_modules[7],    
         ] ,
         conv_modules[2] : [
-            conv_modules[1],    # backbone.layer1.0.conv1
-            conv_modules[3],    # backbone.layer1.0.conv2
+            conv_modules[1],    
+            conv_modules[3],    
             conv_modules[5],    
             conv_modules[7],    
         ] ,
         conv_modules[4] : [
-            conv_modules[1],    # backbone.layer1.0.conv1
-            conv_modules[3],    # backbone.layer1.0.conv2
+            conv_modules[1],    
+            conv_modules[3],    
             conv_modules[5],    
             conv_modules[7],    
         ] ,
@@ -459,6 +459,169 @@ def main():
 
     ops_types = ['Conv', 'BatchNormalization', 
                  'Relu', 'MaxPool', 'Add', 'Constant', 'Upsample', 'Transpose', 'Reshape', 'Concat', 'Sigmoid']
+    ignore_op_type = ['Constant',]
+
+    INPUT_TENSOR_ID = 'input.1'
+
+    weight_nodes_ids = list()
+    tensor_nodes = dict()
+    for t_id, t_param in g.params.items():
+        if t_id == INPUT_TENSOR_ID or data_node_has_parent(g, t_id):
+            _attr = {'shape': t_param['shape']}
+            _node = SNode(t_id, 'tensor', attr=_attr)
+            tensor_nodes[t_id] = _node 
+        else:
+            weight_nodes_ids.append(t_id)
+
+    op_nodes = dict() 
+    for ops_name in ops_keys:
+        # print(ops_name)
+        op_info = g.ops[ops_name]
+        assert op_info['name'] == ops_name
+        if op_info['type'] in ignore_op_type:
+            continue
+        _attr = {
+            'type': op_info['type']
+        }
+        for _a in op_info['attrs']:
+            _attr[_a] = op_info['attrs'][_a]
+        _node = SNode(ops_name, 'op', attr=_attr)
+        for t_id in op_info['inputs']:
+            if t_id in weight_nodes_ids:
+                continue
+            in_node = tensor_nodes.get(t_id, None)
+            assert in_node is not None, 'tensor node not found.'
+            _node.in_tensor.append(in_node)
+        assert len(op_info['outputs']) == 1, 'op output num error'
+        for t_id in op_info['outputs']:
+            out_node = tensor_nodes.get(t_id, None)
+            assert in_node is not None, 'tensor node not found.'
+            _node.out_tensor.append(out_node)
+        op_nodes[ops_name] = _node
+
+    print('generate equivalence tensor map.')
+    equivalence_shape_tensors_map = dict()
+    equivalence_shape_tensors_map_inverse = collections.defaultdict(set) 
+    for _op in ops_type_map['Add']:
+        # print(_op['name'])
+        assert len(_op['outputs']) == 1, 'op output num error'
+
+        connect_t_ids = _op['inputs'] + [_op['outputs'][0],]
+
+        equivalence_t_id = None
+        for t_id in connect_t_ids:
+            if equivalence_shape_tensors_map.get(t_id, None):
+                equivalence_t_id = equivalence_shape_tensors_map[t_id]
+                break
+        if not equivalence_t_id:
+            equivalence_t_id = min(connect_t_ids)
+        else:
+            # check equivalence tensor is unique, if not, need to merge them
+            total_equivalence_t_ids = [equivalence_t_id,]
+            for t_id in connect_t_ids:
+                eq_t_id = equivalence_shape_tensors_map.get(t_id, None)
+                if eq_t_id is not None and eq_t_id != equivalence_t_id:
+                    total_equivalence_t_ids.append(eq_t_id)
+            # merge start
+            if len(total_equivalence_t_ids) != 1:
+                min_equivalence_t_id = min(total_equivalence_t_ids)
+                for eq_t_id in total_equivalence_t_ids:
+                    if eq_t_id == min_equivalence_t_id:
+                        continue
+                    t_ids = equivalence_shape_tensors_map_inverse.pop(eq_t_id)
+                    for t_id in t_ids:
+                        equivalence_shape_tensors_map[t_id] = min_equivalence_t_id
+                        equivalence_shape_tensors_map_inverse[min_equivalence_t_id].add(t_id)
+                equivalence_t_id = min_equivalence_t_id
+            # merge end
+        for t_id in connect_t_ids:
+            equivalence_shape_tensors_map[t_id] = equivalence_t_id
+            equivalence_shape_tensors_map_inverse[equivalence_t_id].add(t_id)
+
+    for _op in ops_type_map['Relu']:
+        # print(_op['name'])
+        assert len(_op['inputs']) == 1, 'op input num error'
+        assert len(_op['outputs']) == 1, 'op output num error'
+
+        connect_t_ids = [_op['inputs'][0], _op['outputs'][0]]
+
+        equivalence_t_id = None
+        for t_id in connect_t_ids:
+            if equivalence_shape_tensors_map.get(t_id, None):
+                equivalence_t_id = equivalence_shape_tensors_map[t_id]
+                break
+        if not equivalence_t_id:
+            equivalence_t_id = min(connect_t_ids)
+        else:
+            # check equivalence tensor is unique, if not, need to merge them
+            total_equivalence_t_ids = [equivalence_t_id,]
+            for t_id in connect_t_ids:
+                eq_t_id = equivalence_shape_tensors_map.get(t_id, None)
+                if eq_t_id is not None and eq_t_id != equivalence_t_id:
+                    total_equivalence_t_ids.append(eq_t_id)
+            # merge start
+            if len(total_equivalence_t_ids) != 1:
+                min_equivalence_t_id = min(total_equivalence_t_ids)
+                for eq_t_id in total_equivalence_t_ids:
+                    if eq_t_id == min_equivalence_t_id:
+                        continue
+                    t_ids = equivalence_shape_tensors_map_inverse.pop(eq_t_id)
+                    for t_id in t_ids:
+                        equivalence_shape_tensors_map[t_id] = min_equivalence_t_id
+                        equivalence_shape_tensors_map_inverse[min_equivalence_t_id].add(t_id)
+                equivalence_t_id = min_equivalence_t_id
+            # merge end
+        for t_id in connect_t_ids:
+            equivalence_shape_tensors_map[t_id] = equivalence_t_id
+            equivalence_shape_tensors_map_inverse[equivalence_t_id].add(t_id)
+
+    for _op in ops_type_map['BatchNormalization']:
+        # print(_op['name'])
+        #print(_op['inputs'])
+        #print(_op['outputs'])
+        assert len(_op['inputs']) == 5, 'op input num error'
+        assert len(_op['outputs']) == 1, 'op output num error'
+
+        connect_t_ids = [_op['inputs'][0], _op['outputs'][0]]
+
+        equivalence_t_id = None
+        for t_id in connect_t_ids:
+            if equivalence_shape_tensors_map.get(t_id, None):
+                equivalence_t_id = equivalence_shape_tensors_map[t_id]
+                break
+        if not equivalence_t_id:
+            equivalence_t_id = min(connect_t_ids)
+        else:
+            # check equivalence tensor is unique, if not, need to merge them
+            total_equivalence_t_ids = [equivalence_t_id,]
+            for t_id in connect_t_ids:
+                eq_t_id = equivalence_shape_tensors_map.get(t_id, None)
+                if eq_t_id is not None and eq_t_id != equivalence_t_id:
+                    total_equivalence_t_ids.append(eq_t_id)
+            # merge start
+            if len(total_equivalence_t_ids) != 1:
+                min_equivalence_t_id = min(total_equivalence_t_ids)
+                for eq_t_id in total_equivalence_t_ids:
+                    if eq_t_id == min_equivalence_t_id:
+                        continue
+                    t_ids = equivalence_shape_tensors_map_inverse.pop(eq_t_id)
+                    for t_id in t_ids:
+                        equivalence_shape_tensors_map[t_id] = min_equivalence_t_id
+                        equivalence_shape_tensors_map_inverse[min_equivalence_t_id].add(t_id)
+                equivalence_t_id = min_equivalence_t_id
+            # merge end
+        for t_id in connect_t_ids:
+            equivalence_shape_tensors_map[t_id] = equivalence_t_id
+            equivalence_shape_tensors_map_inverse[equivalence_t_id].add(t_id)
+
+    for equivalence_t_id in equivalence_shape_tensors_map_inverse:
+        print()
+        t_ids = list(equivalence_shape_tensors_map_inverse[equivalence_t_id])
+        t_ids.sort()
+        t_ids = ' , '.join(t_ids)
+        print('{} >> [ {} ]'.format(equivalence_t_id, t_ids))
+
+    pdb.set_trace()
 
     SHOW_TYPE = 'Transpose'
     #for _op in ops_type_map[SHOW_TYPE]:
@@ -468,7 +631,7 @@ def main():
 
 
     # from distiller.summary_graph import SummaryGraph
-
+    '''
     equivalence_shape_tensors_map = dict()
     equivalence_shape_tensors_map_inverse = dict()
     # Remove ReLU
@@ -485,8 +648,8 @@ def main():
         t_out = op['outputs'][0]
 
         _tmp_new_e = []
-        for edge in refine_edges:
-            if edge.src == t_out:
+        for enumerate(edge in refine_edges:
+            if edge.dst == t_in:
                 print(edge)
                 new_edge = SummaryGraph.Edge(t_in, edge.dst)
                 _tmp_new_e.append(new_edge)
@@ -501,6 +664,7 @@ def main():
         #else:
         #    assert 0, 'to check ....'
     exit(0)
+    '''
 
     # Fuse Conv & BN
 
@@ -581,6 +745,29 @@ def main():
     #print(g.ops)
     #print(g.missing_modules())
 
+class SNode(object):
+    def __init__(self, name, node_type, attr=None):
+        self.name = name
+        self.node_type = node_type
+
+        if attr is not None:
+            self.attr = attr
+        elif node_type == 'tensor':
+            self.attr = {
+                'shape' : None,
+            }
+        elif node_type == 'op':
+            self.attr = {
+                'type' : None,
+            }
+        else:
+            raise ValueError('node type error')
+
+        self.in_tensor = list()
+        self.out_tensor = list()
+
+    def set_attribute(self, attr_info):
+        pass
 
 
 
