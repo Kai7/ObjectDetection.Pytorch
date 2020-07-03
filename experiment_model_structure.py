@@ -120,12 +120,6 @@ def main():
     build_param = {'logger': net_logger}
     if args.architecture == 'ksevendet':
         net_model = ksevendet.KSevenDet(ksevendet_cfg, num_classes=args.num_classes, pretrained=False, **build_param)
-    elif args.architecture == 'retinanet-p45p6':
-        net_model = retinanet.retinanet_p45p6(num_classes=args.num_classes, **build_param)
-    elif args.architecture.split('-')[0] == 'retinanet':
-        net_model = retinanet.build_retinanet(args.architecture, num_classes=args.num_classes, pretrained=False, **build_param)
-    elif args.architecture.split('-')[0] == 'efficientdet':
-        net_model = efficientdet.build_efficientdet(args.architecture, num_classes=args.num_classes, pretrained=False, **build_param)
     else:
         assert 0, 'architecture error'
 
@@ -207,7 +201,7 @@ def main():
 
         conv_weights.append(module.weight)
         mod_name = model_find_module_name(model, module)
-        print('find Conv module: {}'.format(mod_name))
+        # print('find Conv module: {}'.format(mod_name))
         conv_modules_map[mod_name] = module
 
         return None
@@ -218,12 +212,12 @@ def main():
         features_out_hook.append(fea_out[0].shape)
 
         mod_name = model_find_module_name(model, module)
-        print('find BN module: {}'.format(mod_name))
+        # print('find BN module: {}'.format(mod_name))
         bn_modules_map[mod_name] = module
 
         return None
 
-    def module_io_shape_recorder(m):
+    def module_recorder(m):
         if isinstance(m, torch.nn.Conv2d):
             hook_handles.append(m.register_forward_hook(partial(conv_hook, model=net_model)))
         if isinstance(m, torch.nn.BatchNorm2d):
@@ -243,159 +237,30 @@ def main():
     with torch.no_grad():
         #for n, p in net_model.named_parameters():
         #    print(p.requires_grad)
-        net_model.apply(module_io_shape_recorder)
+        net_model.apply(module_recorder)
         net_model(sample_input, return_head=True)
-        print(len(features_in_hook))
-        for i in range(len(module_name)):
-            print('{} | {} | {}'.format(module_name[i], features_in_hook[i], features_out_hook[i]))
+        #print(len(features_in_hook))
+        #for i in range(len(module_name)):
+        #    print('{} | {} | {}'.format(module_name[i], features_in_hook[i], features_out_hook[i]))
 
         # Unregister from the forward hooks
         for handle in hook_handles:
             handle.remove()
     
         #print(type(conv_weights[0]))
-        net_model(sample_input, return_head=True)
-        print(len(features_in_hook))
+        # net_model(sample_input, return_head=True)
+        # print(len(features_in_hook))
     
-    print(type(conv_modules_map.keys()))
-    conv_modules = list(conv_modules_map.keys())
-    for i in range(10):
-        print(f'[{i}] {conv_modules[i]}')
-    print(type(bn_modules_map.keys()))
-    bn_modules = list(bn_modules_map.keys())
-    for i in range(10):
-        print(f'[{i}] {bn_modules[i]}')
+    #print(type(conv_modules_map.keys()))
+    #conv_modules = list(conv_modules_map.keys())
+    #for i in range(10):
+    #    print(f'[{i}] {conv_modules[i]}')
+    #print(type(bn_modules_map.keys()))
+    #bn_modules = list(bn_modules_map.keys())
+    #for i in range(10):
+    #    print(f'[{i}] {bn_modules[i]}')
     
-
-    pruning_channel_conv_layers = [
-        conv_modules[1],   # backbone.layer1.0.conv1
-    ]
-    pruning_channel_to_filter_conv_chain = {
-        conv_modules[1] : [
-            conv_modules[0],    # backbone.conv1
-            conv_modules[2],    # backbone.layer1.0.conv2
-            conv_modules[4],    # backbone.layer1.1.conv2   
-        ] ,
-        conv_modules[3] : [
-            conv_modules[0],    
-            conv_modules[2],    
-            conv_modules[4],    
-        ] ,
-        conv_modules[5] : [
-            conv_modules[0],    
-            conv_modules[2],    
-            conv_modules[4],    
-        ] ,
-        conv_modules[7] : [
-            conv_modules[0],    
-            conv_modules[2],    
-            conv_modules[4],    
-        ] ,
-    }
-    pruning_filter_to_channel_conv_chain = {
-        conv_modules[0] : [
-            conv_modules[1],    
-            conv_modules[3],    
-            conv_modules[5],    
-            conv_modules[7],    
-        ] ,
-        conv_modules[2] : [
-            conv_modules[1],    
-            conv_modules[3],    
-            conv_modules[5],    
-            conv_modules[7],    
-        ] ,
-        conv_modules[4] : [
-            conv_modules[1],    
-            conv_modules[3],    
-            conv_modules[5],    
-            conv_modules[7],    
-        ] ,
-    }
-    conv_bn_chain = {
-        conv_modules[0] : bn_modules[0],  # backbone.conv1 : backbone.bn1
-        conv_modules[1] : bn_modules[1],  # backbone.layer1.0.conv1 : backbone.layer1.0.bn1
-        conv_modules[2] : bn_modules[2],  # backbone.layer1.0.conv2 : backbone.layer1.0.bn2
-        conv_modules[3] : bn_modules[3],  
-        conv_modules[4] : bn_modules[4],  
-        conv_modules[5] : bn_modules[5],  
-        conv_modules[7] : bn_modules[7],  
-    }
-
-    print('Pruning Channel to Filter Conv Chain')
-    for k in pruning_channel_to_filter_conv_chain:
-        print(f'> {k}')
-        for c in  pruning_channel_to_filter_conv_chain[k]:
-            print(f'  - {c}')
-
-    print('Pruning Filter to Channel Conv Chain')
-    for k in pruning_filter_to_channel_conv_chain:
-        print(f'> {k}')
-        for c in  pruning_filter_to_channel_conv_chain[k]:
-            print(f'  - {c}')
-
-    def is_conv_chain_valid(conv_module_1, conv_module_2):
-        w1_shape = conv_module_1.weight.shape
-        w2_shape = conv_module_2.weight.shape
-        return w1_shape[0] == w2_shape[1]
-
-    def prune_conv_channel(module_name, conv_modules_map, bn_modules_map, conv_bn_chain, pruning_num=7):
-        assert not conv_modules_map[module_name].bias, 'not support'
-        print('> Pruning Channels : {}'.format(module_name))
-        conv_module = conv_modules_map[module_name]
-        conv_weight = conv_module.weight
-        w_shape = filter_num, channel_num, kernel_h, kernel_w = conv_weight.shape
-        print('    original weight shape = [{:>4},{:>4},{:>4},{:>4}]'.format(*w_shape))
-
-        rand_tensor = torch.rand((filter_num, channel_num - pruning_num, kernel_h, kernel_w))
-        rand_param  = torch.nn.Parameter(rand_tensor)
-        conv_module.weight = rand_param
-        w_shape = filter_num, channel_num, kernel_h, kernel_w = rand_param.shape
-        print('     pruning weight shape = [{:>4},{:>4},{:>4},{:>4}]'.format(*w_shape))
-        #conv_bias = conv_module.bias
-
-        for m_name in pruning_channel_to_filter_conv_chain[module_name]:
-            if not is_conv_chain_valid(conv_modules_map[m_name], conv_module):
-                prune_conv_filter(m_name, conv_modules_map, bn_modules_map, conv_bn_chain, pruning_num=pruning_num)
-
-
-
-    def prune_conv_filter(module_name, conv_modules_map, bn_modules_map, conv_bn_chain, pruning_num=7):
-        assert not conv_modules_map[module_name].bias, 'not support'
-        print('> Pruning Filters : {}'.format(module_name))
-        conv_module = conv_modules_map[module_name]
-        conv_weight = conv_module.weight
-        w_shape = filter_num, channel_num, kernel_h, kernel_w = conv_weight.shape
-        print('    original weight shape = [{:>4},{:>4},{:>4},{:>4}]'.format(*w_shape))
-
-        rand_tensor = torch.rand((filter_num - pruning_num, channel_num, kernel_h, kernel_w))
-        rand_param  = torch.nn.Parameter(rand_tensor)
-        conv_module.weight = rand_param
-        w_shape = filter_num, channel_num, kernel_h, kernel_w = rand_param.shape
-        print('     pruning weight shape = [{:>4},{:>4},{:>4},{:>4}]'.format(*w_shape))
-
-        bn_module_name = conv_bn_chain.get(module_name, None)
-        if not bn_module_name:
-            return
-        print(' - Pruning BN Channels : {}'.format(bn_module_name))
-        print('     init BN, channels num = {}'.format(filter_num))
-        bn_module = bn_modules_map[bn_module_name]
-        #print(_num_filters, bn_module.eps, bn_module.momentum, bn_module.affine, bn_module.track_running_stats)
-        bn_module.__init__(filter_num, bn_module.eps, bn_module.momentum, bn_module.affine, bn_module.track_running_stats)
-
-        for m_name in pruning_filter_to_channel_conv_chain[module_name]:
-            if not is_conv_chain_valid(conv_module, conv_modules_map[m_name]):
-                prune_conv_channel(m_name, conv_modules_map, bn_modules_map, conv_bn_chain, pruning_num=pruning_num)
-        
-
-
-    for conv_layer in pruning_channel_conv_layers:
-        prune_conv_channel(conv_layer, conv_modules_map, bn_modules_map, conv_bn_chain) 
-
-    print('Pruning Done.')
-
     net_model = net_model.cuda()
-
 
     # print(torch.equal(conv_modules_map[conv_modules[0]].weight, conv_weights[0]))
     # print(torch.equal(conv_modules_map[conv_modules[1]].weight, conv_weights[1]))
@@ -417,7 +282,7 @@ def main():
 
     print('new model inference')
     # net_model(sample_input, return_head=True)
-    model_summaries.model_summary(net_model, 'compute', input_shape=sample_input_shape)
+    # model_summaries.model_summary(net_model, 'compute', input_shape=sample_input_shape)
 
     print('done')
     
@@ -436,6 +301,8 @@ def main():
         g_image.save(IMAGE_FILE_PATH, 'jpeg')
         print('done.')
         exit(0)
+    
+    # pdb.set_trace()
 
 
     ops_keys = list(g.ops.keys())
@@ -491,139 +358,230 @@ def main():
                 continue
             in_node = tensor_nodes.get(t_id, None)
             assert in_node is not None, 'tensor node not found.'
-            _node.in_tensor.append(in_node)
+            _node.in_tensor.add(in_node)
+            in_node.out_op.add(_node)
         assert len(op_info['outputs']) == 1, 'op output num error'
         for t_id in op_info['outputs']:
             out_node = tensor_nodes.get(t_id, None)
             assert in_node is not None, 'tensor node not found.'
-            _node.out_tensor.append(out_node)
+            _node.out_tensor.add(out_node)
+            out_node.in_op.add(_node)
         op_nodes[ops_name] = _node
 
-    print('generate equivalence tensor map.')
-    equivalence_shape_tensors_map = dict()
-    equivalence_shape_tensors_map_inverse = collections.defaultdict(set) 
-    for _op in ops_type_map['Add']:
-        # print(_op['name'])
-        assert len(_op['outputs']) == 1, 'op output num error'
+    for _op_name in op_nodes:
+        _node = op_nodes[_op_name]
+        _node.in_tensor  = list(_node.in_tensor)
+        _node.out_tensor = list(_node.out_tensor)
+    for _tensor_name in tensor_nodes:
+        _tensor = tensor_nodes[_tensor_name]
+        _tensor.in_op  = list(_tensor.in_op)
+        _tensor.out_op = list(_tensor.out_op)
+    
+    eq_tensors_map, eq_tensors_map_inverse = generate_equivalence_tensor_map(ops_type_map, op_nodes, tensor_nodes)
+    eq_t_ids = list(eq_tensors_map_inverse.keys())
+    eq_t_ids.sort()
+    #for eq_t_id in eq_t_ids:
+    #    print()
+    #    t_ids = list(eq_tensors_map_inverse[eq_t_id])
+    #    t_ids.sort()
+    #    t_ids = ' , '.join(t_ids)
+    #    print('{} >> [ {} ]'.format(eq_t_id, t_ids))
 
-        connect_t_ids = _op['inputs'] + [_op['outputs'][0],]
 
-        equivalence_t_id = None
-        for t_id in connect_t_ids:
-            if equivalence_shape_tensors_map.get(t_id, None):
-                equivalence_t_id = equivalence_shape_tensors_map[t_id]
-                break
-        if not equivalence_t_id:
-            equivalence_t_id = min(connect_t_ids)
+    print('============================================================')
+    pruning_channel_to_filter_ops_chain = dict()
+    for _conv_op in ops_type_map['Conv']:
+        _op_name = _conv_op['name']
+        conv_node = op_nodes[_op_name]
+        # print(conv_node.name)
+        assert len(conv_node.in_tensor) == 1, 'len error'
+        bottom_tensor_node = conv_node.in_tensor[0]
+        eq_tensor_id = eq_tensors_map.get(bottom_tensor_node.name, None)
+        search_t_ids = [bottom_tensor_node.name,] if not eq_tensor_id else eq_tensors_map_inverse[eq_tensor_id]
+        #if not eq_tensor_id:
+        to_prun_filter_convs = set()
+        for t_id in search_t_ids:
+            search_tensor_node = tensor_nodes[t_id]
+            if len(search_tensor_node.in_op) == 0:
+                print('input tensor', search_tensor_node.name)
+                continue
+            assert len(search_tensor_node.in_op) == 1, 'len error'
+            bottom_op_node = search_tensor_node.in_op[0]
+            if bottom_op_node.attr['type'] == 'Conv':
+                to_prun_filter_convs.add(bottom_op_node.name)
+        to_prun_filter_convs = list(to_prun_filter_convs)
+        to_prun_filter_convs.sort()
+        pruning_channel_to_filter_ops_chain[_op_name] = to_prun_filter_convs
+                
+    pruning_filter_to_channel_ops_chain = dict()
+    for _conv_op in ops_type_map['Conv']:
+        _op_name = _conv_op['name']
+        conv_node = op_nodes[_op_name]
+        # print(conv_node.name)
+        assert len(conv_node.out_tensor) == 1, 'len error'
+        top_tensor_node = conv_node.out_tensor[0]
+        eq_tensor_id = eq_tensors_map.get(top_tensor_node.name, None)
+        search_t_ids = [top_tensor_node.name,] if not eq_tensor_id else eq_tensors_map_inverse[eq_tensor_id]
+        to_prun_channel_convs = set()
+        for t_id in search_t_ids:
+            search_tensor_node = tensor_nodes[t_id]
+            if len(search_tensor_node.out_op) == 0:
+                print('output tensor', search_tensor_node.name)
+                continue
+            # print('{} has {} out ops.'.format(t_id, len(search_tensor_node.out_op)))
+            for top_op_node in search_tensor_node.out_op:
+                if top_op_node.attr['type'] in ['Conv',]:
+                    to_prun_channel_convs.add(top_op_node.name)
+        to_prun_channel_convs = list(to_prun_channel_convs)
+        to_prun_channel_convs.sort()
+        pruning_filter_to_channel_ops_chain[_op_name] = to_prun_channel_convs
+
+    conv_bn_chain = dict()
+    for _bn_op in ops_type_map['BatchNormalization']:
+        _op_name = _bn_op['name']
+        bn_node = op_nodes[_op_name]
+        assert len(bn_node.in_tensor) == 1, 'len error'
+        bottom_tensor_node = bn_node.in_tensor[0]
+        assert len(bottom_tensor_node.in_op) == 1, 'len error'
+        bottom_op_node = bottom_tensor_node.in_op[0]
+        assert bottom_op_node.attr['type'] == 'Conv', 'Architecture not support. BN must to follow by Conv.'
+        bottom_conv_op_name = bottom_op_node.name
+        conv_bn_chain[bottom_conv_op_name] = _op_name
+    
+    # for k in conv_bn_chain:
+    #     print('{} -> {}'.format(k, conv_bn_chain[k]))
+    # pdb.set_trace()
+
+
+
+    def is_conv_chain_valid(conv_module_1, conv_module_2):
+        w1_shape = conv_module_1.weight.shape
+        w2_shape = conv_module_2.weight.shape
+        return w1_shape[0] == w2_shape[1]
+
+    def prune_conv_channel(module_name, conv_modules_map, bn_modules_map, conv_bn_chain, pruning_num=7):
+        assert not conv_modules_map[module_name].bias, 'not support'
+        print('> Pruning Channels : {}'.format(module_name))
+        conv_module = conv_modules_map[module_name]
+        conv_weight = conv_module.weight
+        w_shape = filter_num, channel_num, kernel_h, kernel_w = conv_weight.shape
+        print('    original weight shape = [{:>4},{:>4},{:>4},{:>4}]'.format(*w_shape))
+
+        rand_tensor = torch.rand((filter_num, channel_num - pruning_num, kernel_h, kernel_w))
+        rand_param  = torch.nn.Parameter(rand_tensor)
+        conv_module.weight = rand_param
+        w_shape = filter_num, channel_num, kernel_h, kernel_w = rand_param.shape
+        print('     pruning weight shape = [{:>4},{:>4},{:>4},{:>4}]'.format(*w_shape))
+        #conv_bias = conv_module.bias
+
+        for m_name in pruning_channel_to_filter_ops_chain[module_name]:
+            if not is_conv_chain_valid(conv_modules_map[m_name], conv_module):
+                prune_conv_filter(m_name, conv_modules_map, bn_modules_map, conv_bn_chain, pruning_num=pruning_num)
+
+    def prune_conv_filter(module_name, conv_modules_map, bn_modules_map, conv_bn_chain, pruning_num=7):
+        assert not conv_modules_map[module_name].bias, 'not support'
+        print('> Pruning Filters : {}'.format(module_name))
+        conv_module = conv_modules_map[module_name]
+        conv_weight = conv_module.weight
+        w_shape = filter_num, channel_num, kernel_h, kernel_w = conv_weight.shape
+        print('    original weight shape = [{:>4},{:>4},{:>4},{:>4}]'.format(*w_shape))
+
+        rand_tensor = torch.rand((filter_num - pruning_num, channel_num, kernel_h, kernel_w))
+        rand_param  = torch.nn.Parameter(rand_tensor)
+        conv_module.weight = rand_param
+        w_shape = filter_num, channel_num, kernel_h, kernel_w = rand_param.shape
+        print('     pruning weight shape = [{:>4},{:>4},{:>4},{:>4}]'.format(*w_shape))
+
+        bn_module_name = conv_bn_chain.get(module_name, None)
+        if not bn_module_name:
+            return
+        print(' - Pruning BN Channels : {}'.format(bn_module_name))
+        print('     init BN, channels num = {}'.format(filter_num))
+        bn_module = bn_modules_map[bn_module_name]
+        #print(_num_filters, bn_module.eps, bn_module.momentum, bn_module.affine, bn_module.track_running_stats)
+        bn_module.__init__(filter_num, bn_module.eps, bn_module.momentum, bn_module.affine, bn_module.track_running_stats)
+
+        for m_name in pruning_filter_to_channel_ops_chain[module_name]:
+            if not is_conv_chain_valid(conv_module, conv_modules_map[m_name]):
+                prune_conv_channel(m_name, conv_modules_map, bn_modules_map, conv_bn_chain, pruning_num=pruning_num)
+
+
+    print('Pruning Channel to Filter Ops Chain')
+    for k in pruning_channel_to_filter_ops_chain:
+        if k not in ['backbone.layer1.0.conv1',
+                     'backbone.layer1.1.conv1',
+                     'backbone.layer2.0.conv1',
+                     'backbone.layer2.0.downsample.0']:
+            continue
+        print(f'> {k}')
+        for c in  pruning_channel_to_filter_ops_chain[k]:
+            print(f'  - {c}')
+
+    print('Pruning Filter to Channel Ops Chain')
+    for k in pruning_filter_to_channel_ops_chain:
+        if k not in ['backbone.conv1',
+                     'backbone.layer1.0.conv2',
+                     'backbone.layer1.1.conv2',]:
+            continue
+        print(f'> {k}')
+        for c in  pruning_filter_to_channel_ops_chain[k]:
+            print(f'  - {c}')
+
+    # pdb.set_trace()
+
+    all_conv_op_name = [_op['name'] for _op in ops_type_map['Conv']]
+
+    for i, conv_op_name in enumerate(all_conv_op_name):
+        conv_op_area_name = conv_op_name.split('.')[0]
+        if conv_op_area_name != 'backbone':
+            continue
+        print(conv_op_name)
+
+        #if i >= 2:
+        #    continue
+        if op_nodes[conv_op_name].in_tensor[0].name == INPUT_TENSOR_ID:
+            print('top conv op, skip')
+            continue
+
+        del net_model
+        del conv_modules_map, bn_modules_map
+        if args.architecture == 'ksevendet':
+            #net_model = ksevendet.KSevenDet(ksevendet_cfg, num_classes=args.num_classes, pretrained=False, **build_param)
+            net_model = ksevendet.KSevenDet(ksevendet_cfg, num_classes=args.num_classes, pretrained=False)
         else:
-            # check equivalence tensor is unique, if not, need to merge them
-            total_equivalence_t_ids = [equivalence_t_id,]
-            for t_id in connect_t_ids:
-                eq_t_id = equivalence_shape_tensors_map.get(t_id, None)
-                if eq_t_id is not None and eq_t_id != equivalence_t_id:
-                    total_equivalence_t_ids.append(eq_t_id)
-            # merge start
-            if len(total_equivalence_t_ids) != 1:
-                min_equivalence_t_id = min(total_equivalence_t_ids)
-                for eq_t_id in total_equivalence_t_ids:
-                    if eq_t_id == min_equivalence_t_id:
-                        continue
-                    t_ids = equivalence_shape_tensors_map_inverse.pop(eq_t_id)
-                    for t_id in t_ids:
-                        equivalence_shape_tensors_map[t_id] = min_equivalence_t_id
-                        equivalence_shape_tensors_map_inverse[min_equivalence_t_id].add(t_id)
-                equivalence_t_id = min_equivalence_t_id
-            # merge end
-        for t_id in connect_t_ids:
-            equivalence_shape_tensors_map[t_id] = equivalence_t_id
-            equivalence_shape_tensors_map_inverse[equivalence_t_id].add(t_id)
+            assert 0, 'architecture error'
 
-    for _op in ops_type_map['Relu']:
-        # print(_op['name'])
-        assert len(_op['inputs']) == 1, 'op input num error'
-        assert len(_op['outputs']) == 1, 'op output num error'
+        # The following statement is important, make sure all weights are in GPU
+        net_model = net_model.cuda()
 
-        connect_t_ids = [_op['inputs'][0], _op['outputs'][0]]
+        module_name = []
+        features_in_hook = []
+        features_out_hook = []
+        conv_weights = []
+        conv_modules_map = collections.OrderedDict()
+        bn_modules_map = collections.OrderedDict()
+        hook_handles = []
+        with torch.no_grad():
+            net_model.apply(module_recorder)
+            net_model(sample_input, return_head=True)
+            # Unregister from the forward hooks
+            for handle in hook_handles:
+                handle.remove()
 
-        equivalence_t_id = None
-        for t_id in connect_t_ids:
-            if equivalence_shape_tensors_map.get(t_id, None):
-                equivalence_t_id = equivalence_shape_tensors_map[t_id]
-                break
-        if not equivalence_t_id:
-            equivalence_t_id = min(connect_t_ids)
-        else:
-            # check equivalence tensor is unique, if not, need to merge them
-            total_equivalence_t_ids = [equivalence_t_id,]
-            for t_id in connect_t_ids:
-                eq_t_id = equivalence_shape_tensors_map.get(t_id, None)
-                if eq_t_id is not None and eq_t_id != equivalence_t_id:
-                    total_equivalence_t_ids.append(eq_t_id)
-            # merge start
-            if len(total_equivalence_t_ids) != 1:
-                min_equivalence_t_id = min(total_equivalence_t_ids)
-                for eq_t_id in total_equivalence_t_ids:
-                    if eq_t_id == min_equivalence_t_id:
-                        continue
-                    t_ids = equivalence_shape_tensors_map_inverse.pop(eq_t_id)
-                    for t_id in t_ids:
-                        equivalence_shape_tensors_map[t_id] = min_equivalence_t_id
-                        equivalence_shape_tensors_map_inverse[min_equivalence_t_id].add(t_id)
-                equivalence_t_id = min_equivalence_t_id
-            # merge end
-        for t_id in connect_t_ids:
-            equivalence_shape_tensors_map[t_id] = equivalence_t_id
-            equivalence_shape_tensors_map_inverse[equivalence_t_id].add(t_id)
+        prune_conv_channel(conv_op_name, conv_modules_map, bn_modules_map, conv_bn_chain) 
+        # prune_conv_channel(conv_op_name, conv_modules_map, bn_modules_map) 
 
-    for _op in ops_type_map['BatchNormalization']:
-        # print(_op['name'])
-        #print(_op['inputs'])
-        #print(_op['outputs'])
-        assert len(_op['inputs']) == 5, 'op input num error'
-        assert len(_op['outputs']) == 1, 'op output num error'
+        print('Pruning Done.')
 
-        connect_t_ids = [_op['inputs'][0], _op['outputs'][0]]
+        # The following statement is important, make sure all weights are in GPU
+        net_model = net_model.cuda()
+        net_model.set_onnx_convert_info(fixed_size=(height, width))    
 
-        equivalence_t_id = None
-        for t_id in connect_t_ids:
-            if equivalence_shape_tensors_map.get(t_id, None):
-                equivalence_t_id = equivalence_shape_tensors_map[t_id]
-                break
-        if not equivalence_t_id:
-            equivalence_t_id = min(connect_t_ids)
-        else:
-            # check equivalence tensor is unique, if not, need to merge them
-            total_equivalence_t_ids = [equivalence_t_id,]
-            for t_id in connect_t_ids:
-                eq_t_id = equivalence_shape_tensors_map.get(t_id, None)
-                if eq_t_id is not None and eq_t_id != equivalence_t_id:
-                    total_equivalence_t_ids.append(eq_t_id)
-            # merge start
-            if len(total_equivalence_t_ids) != 1:
-                min_equivalence_t_id = min(total_equivalence_t_ids)
-                for eq_t_id in total_equivalence_t_ids:
-                    if eq_t_id == min_equivalence_t_id:
-                        continue
-                    t_ids = equivalence_shape_tensors_map_inverse.pop(eq_t_id)
-                    for t_id in t_ids:
-                        equivalence_shape_tensors_map[t_id] = min_equivalence_t_id
-                        equivalence_shape_tensors_map_inverse[min_equivalence_t_id].add(t_id)
-                equivalence_t_id = min_equivalence_t_id
-            # merge end
-        for t_id in connect_t_ids:
-            equivalence_shape_tensors_map[t_id] = equivalence_t_id
-            equivalence_shape_tensors_map_inverse[equivalence_t_id].add(t_id)
+        print('new model inference')
+        model_summaries.model_summary(net_model, 'compute', input_shape=sample_input_shape)
 
-    for equivalence_t_id in equivalence_shape_tensors_map_inverse:
-        print()
-        t_ids = list(equivalence_shape_tensors_map_inverse[equivalence_t_id])
-        t_ids.sort()
-        t_ids = ' , '.join(t_ids)
-        print('{} >> [ {} ]'.format(equivalence_t_id, t_ids))
-
-    pdb.set_trace()
-
-    SHOW_TYPE = 'Transpose'
+        
+    # SHOW_TYPE = 'Transpose'
     #for _op in ops_type_map[SHOW_TYPE]:
     #    print('({})  {}'.format(_op['type'], _op['name']))
     #    print('  In  ({}): {}'.format(len(_op['inputs']), str(_op['inputs'])))
@@ -665,35 +623,6 @@ def main():
         #    assert 0, 'to check ....'
     exit(0)
     '''
-
-    # Fuse Conv & BN
-
-    # Remove Add
-
-    # Modify Ops, Params, Edges 
-    tmp_op_nodes = [op['name'] for op in g.ops.values()] 
-    tmp_data_nodes  = []
-    tmp_param_nodes = []
-    for t_id, t_param in g.params.items():
-        n_data = (t_id, str(t_param['shape']))
-        if data_node_has_parent(g, t_id):
-            tmp_data_nodes.append(n_data)
-        else:
-            tmp_param_nodes.append(n_data)
-    tmp_edges = g.edges
-
-    display_param_nodes = False
-    if not display_param_nodes:
-        # Use only the edges that don't have a parameter source
-        non_param_ids = tmp_op_nodes + [dn[0] for dn in tmp_data_nodes]
-        INPUT_TENSOR_ID = 'input.1'
-        non_param_ids.append(INPUT_TENSOR_ID)
-        tmp_edges = [edge for edge in g.edges if edge.src in non_param_ids]
-        tmp_param_nodes = None
-
-    op_nodes_desc = [(op['name'], op['type'], *annotate_op_node(op)) for op in sgraph.ops.values()]
-    pydot_graph = create_pydot_graph(op_nodes_desc, data_nodes, param_nodes, edges, rankdir, styles)
-    png = pydot_graph.create_png()
 
     """Create a PNG object containing a graphiz-dot graph of the network,
     as represented by SummaryGraph 'sgraph'.
@@ -738,7 +667,6 @@ def main():
     # png = pydot_graph.create_png()
     # return png
 
-    pdb.set_trace()
 
     #print(g.__dict__.keys())
     ##print(g.module_ops_map)
@@ -763,12 +691,103 @@ class SNode(object):
         else:
             raise ValueError('node type error')
 
-        self.in_tensor = list()
-        self.out_tensor = list()
+        if node_type == 'tensor':
+            self.in_op = set()
+            self.out_op = set()
+        else:
+            self.in_tensor = set()
+            self.out_tensor = set()
+
 
     def set_attribute(self, attr_info):
         pass
 
+
+def generate_equivalence_tensor_map(ops_type_map, op_nodes, tensor_nodes):
+    print('generate equivalence tensor map.')
+    eq_tensors_map = dict()
+    eq_tensors_map_inverse = collections.defaultdict(set) 
+
+    eq_ops_type = ['Add', 'Relu', 'BatchNormalization', 'MaxPool', 'Upsample', 'Conv']
+    for _type in eq_ops_type:
+        equivalence_tensor_at_op(_type, ops_type_map[_type], op_nodes, tensor_nodes, 
+                                 eq_tensors_map, eq_tensors_map_inverse)
+
+    for eq_t_id in eq_tensors_map_inverse:
+        t_ids = eq_tensors_map_inverse.pop(eq_t_id)
+        min_eq_t_id = min(t_ids)
+        for t_id in t_ids:
+            eq_tensors_map[t_id] = min_eq_t_id
+            eq_tensors_map_inverse[min_eq_t_id].add(t_id)
+
+    return eq_tensors_map, eq_tensors_map_inverse
+
+
+def equivalence_tensor_at_op(op_type, ops, op_nodes, tensor_nodes, 
+                             equivalence_shape_tensors_map, equivalence_shape_tensors_map_inverse):
+    print('merge op: {}'.format(op_type))
+    assert op_type in ['Add', 'Relu', 'BatchNormalization', 'MaxPool', 'Upsample', 'Conv']
+    for _op in ops:
+        if op_type == 'Add':
+            assert len(_op['outputs']) == 1, 'op output num error'
+        elif op_type == 'Relu':
+            assert len(_op['inputs']) == 1, 'op input num error'
+            assert len(_op['outputs']) == 1, 'op output num error'
+        elif op_type == 'BatchNormalization':
+            assert len(_op['inputs']) == 5, 'op input num error'
+            assert len(_op['outputs']) == 1, 'op output num error'
+        elif op_type == 'MaxPool':
+            assert len(_op['inputs']) == 1, 'op input num error'
+            assert len(_op['outputs']) == 1, 'op output num error'
+        elif op_type == 'Upsample':
+            assert len(_op['inputs']) == 2, 'op input num error'
+            assert len(_op['outputs']) == 1, 'op output num error'
+        elif op_type == 'Conv':
+            # TODO: What situation lead to 3 inputs.
+            assert len(_op['inputs']) in [2, 3], 'op input num error'
+            assert len(_op['outputs']) == 1, 'op output num error'
+            if op_nodes[_op['name']].attr['group'] == 1:
+                continue
+        else:
+            assert 0, 'Op type error.'
+        
+        if op_type == 'Add':
+            in_t_ids = _op['inputs']
+            out_t_ids = [_op['outputs'][0],]
+        else:
+            in_t_ids = [_op['inputs'][0],]
+            out_t_ids = [_op['outputs'][0],]
+        connect_t_ids = in_t_ids + out_t_ids
+        
+        equivalence_t_id = None
+        for t_id in connect_t_ids:
+            if equivalence_shape_tensors_map.get(t_id, None):
+                equivalence_t_id = equivalence_shape_tensors_map[t_id]
+                break
+        if not equivalence_t_id:
+            equivalence_t_id = min(connect_t_ids)
+        else:
+            # check equivalence tensor is unique, if not, need to merge them
+            total_equivalence_t_ids = [equivalence_t_id,]
+            for t_id in connect_t_ids:
+                eq_t_id = equivalence_shape_tensors_map.get(t_id, None)
+                if eq_t_id is not None and eq_t_id != equivalence_t_id:
+                    total_equivalence_t_ids.append(eq_t_id)
+            # merge start
+            if len(total_equivalence_t_ids) != 1:
+                min_equivalence_t_id = min(total_equivalence_t_ids)
+                for eq_t_id in total_equivalence_t_ids:
+                    if eq_t_id == min_equivalence_t_id:
+                        continue
+                    t_ids = equivalence_shape_tensors_map_inverse.pop(eq_t_id)
+                    for t_id in t_ids:
+                        equivalence_shape_tensors_map[t_id] = min_equivalence_t_id
+                        equivalence_shape_tensors_map_inverse[min_equivalence_t_id].add(t_id)
+                equivalence_t_id = min_equivalence_t_id
+            # merge end
+        for t_id in connect_t_ids:
+            equivalence_shape_tensors_map[t_id] = equivalence_t_id
+            equivalence_shape_tensors_map_inverse[equivalence_t_id].add(t_id)
 
 
 def data_node_has_parent(graph, t_id):
