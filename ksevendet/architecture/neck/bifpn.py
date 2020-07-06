@@ -136,7 +136,8 @@ class BiFPNModule(nn.Module):
     """
     modified by Zylo117
     """
-    def __init__(self, backbone_features_num, in_pyramid_levels=[3,4,5], neck_pyramid_levels=[3,4,5,6,7], out_pyramid_levels=[3,4,5,6,7], 
+    def __init__(self, backbone_features_num, in_pyramid_levels=[3,4,5], neck_pyramid_levels=[3,4,5,6,7], 
+                 out_pyramid_levels=[3,4,5,6,7], 
                  features_num=64, attention=False, act_func='relu', 
                  index=-1, first_time=False, last_time=False, epsilon=1e-4, onnx_export=True, **kwargs):
         """
@@ -198,7 +199,8 @@ class BiFPNModule(nn.Module):
                 SeparableConvBlock(features_num, activation=True, act_func=act_func, onnx_export=onnx_export)
             )
         self.conv_down = nn.ModuleList()
-        for i in range(neck_pyramid_num-1):
+        _conv_down_num = neck_pyramid_num-1 if not last_time else out_pyramid_num-1
+        for i in range(_conv_down_num):
             self.conv_down.append(
                 SeparableConvBlock(features_num, activation=True, act_func=act_func, onnx_export=onnx_export)
             )
@@ -294,7 +296,7 @@ class BiFPNModule(nn.Module):
                 print('[{}] Pyramid Feature Grid Size = [{:>4},{:>4}]'.format(i, *self.pyramid_sizes[i]))
         if self.convert_onnx:
             for i in range(self.neck_pyramid_num-1):
-                print(i)
+                # print(i)
                 self.up_sample[i].scale_factor = None
                 self.up_sample[i].size = list(self.pyramid_sizes[i])
 
@@ -335,12 +337,15 @@ class BiFPNModule(nn.Module):
         # P_2[0]
         feat_map_down = [feat_map_up[0],]
         # P_2[1], P_2[2], ... , P_2[N-2]
-        for i in range(1, self.neck_pyramid_num-1):
+        _down_sample_num = self.neck_pyramid_num-1 if not self.last_time \
+                                                   else min(self.out_pyramid_num, self.neck_pyramid_num-1)
+        for i in range(1, _down_sample_num):
             feat_map_down.append(self.conv_down[i-1](self.act_func(
                                 feat_map_in[i] + feat_map_up[i] + self.down_sample(feat_map_down[-1]))))
         # P_2[N-1]
-        feat_map_down.append(self.conv_down[self.neck_pyramid_num-2](self.act_func(
-                             feat_map_in[self.neck_pyramid_num-1] + self.down_sample(feat_map_down[self.neck_pyramid_num-2]))))
+        if not self.last_time or self.out_pyramid_num == self.neck_pyramid_num:
+            feat_map_down.append(self.conv_down[self.neck_pyramid_num-2](self.act_func(
+                                 feat_map_in[self.neck_pyramid_num-1] + self.down_sample(feat_map_down[self.neck_pyramid_num-2]))))
 
         feat_map_out = [feat_map_down[i] for i in self.out_neck_pyramid_idx]
 
