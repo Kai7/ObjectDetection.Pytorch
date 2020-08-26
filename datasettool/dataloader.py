@@ -729,144 +729,11 @@ class K7ImagePreprocessor(object):
         return new_image
 
 
-class Resizer(object):
-    """Convert ndarrays in sample to Tensors."""
-    def __init__(self, height=608, width=1024, 
-                    min_side=608, max_side=1024, base_size=32, 
-                    inference_mode=False, resize_mode=0, **kwargs):
-        self.height, self.width = height, width
-        self.min_side, self.max_side = min_side, max_side
-        self.base_size = base_size
-        self.inference_mode = inference_mode
-        self.resize_mode = resize_mode
-
-        if 'logger' in kwargs:
-            if self.resize_mode == 0:
-                kwargs['logger'].info('Resizer.Min_side : {}'.format(self.min_side))
-                kwargs['logger'].info('Resizer.Max_side : {}'.format(self.max_side))
-            elif self.resize_mode == 1:
-                kwargs['logger'].info('Resizer.Height  : {}'.format(self.height))
-                kwargs['logger'].info('Resizer.Width   : {}'.format(self.width))
-
-    def __call__(self, sample):
-        if not self.inference_mode:
-            image, annots = sample['img'], sample['annot']
-        else: 
-            image = sample
-        rows, cols, cns = image.shape
-        # print(image.shape)
-
-        if self.resize_mode == 0:
-            smallest_side = min(rows, cols)
-
-            # rescale the image so the smallest side is min_side
-            scale = self.min_side / smallest_side
-
-            # check if the largest side is now greater than max_side, which can happen
-            # when images have a large aspect ratio
-            largest_side = max(rows, cols)
-
-            if largest_side * scale > self.max_side:
-                scale = self.max_side / largest_side
-
-            # resize the image with the computed scale
-            image = skimage.transform.resize(image, (int(round(rows*scale)), int(round((cols*scale)))))
-            rows, cols, cns = image.shape
-
-            pad_w = (self.base_size - rows%self.base_size)%self.base_size
-            pad_h = (self.base_size - cols%self.base_size)%self.base_size
-
-            new_image = np.zeros((rows + pad_w, cols + pad_h, cns)).astype(np.float32)
-            new_image[:rows, :cols, :] = image.astype(np.float32)
-            # print(new_image.shape)
-        elif self.resize_mode == 1:
-            h_scale = self.height / rows
-            w_scale = self.width  / cols 
-            scale = min(h_scale, w_scale)
-            # print(f'resize scale = {scale}')
-
-            # resize the image with the computed scale
-            image = skimage.transform.resize(image, (int(round(rows*scale)), int(round((cols*scale)))))
-            rows, cols, cns = image.shape
-
-            #pad_w = (self.base_size - rows%self.base_size)%self.base_size
-            #pad_h = (self.base_size - cols%self.base_size)%self.base_size
-
-            pad_h = (self.base_size - self.height%self.base_size)%self.base_size
-            pad_w = (self.base_size - self.width%self.base_size)%self.base_size
-
-            new_image = np.zeros((self.height + pad_h, self.width + pad_w, cns)).astype(np.float32)
-            # print(new_image.shape)
-            new_image[:rows, :cols, :] = image.astype(np.float32)
-        else:
-            print('Error resize mode.')
-            return None
-
-        if not self.inference_mode:
-            annots[:, :4] *= scale
-            return {'img': torch.from_numpy(new_image), 'annot': torch.from_numpy(annots), 'scale': scale}
-        else:
-            return torch.from_numpy(new_image)
-
-
-# class Resizer(object):
-#     """Convert ndarrays in sample to Tensors."""
-#     def __init__(self, min_side=608, max_side=1024, base_size=32, inference_mode=False, **kwargs):
-#         self.min_side  = min_side
-#         self.max_side  = max_side
-#         self.base_size = base_size
-#         self.inference_mode = inference_mode
-
-#         if 'logger' in kwargs:
-#             kwargs['logger'].info('Resizer.Min_Side   : {}'.format(self.min_side))
-#             kwargs['logger'].info('Resizer.Max_Side   : {}'.format(self.max_side))
-
-#     def __call__(self, sample):
-#         if not self.inference_mode:
-#             image, annots = sample['img'], sample['annot']
-#         else: 
-#             image = sample
-#         rows, cols, cns = image.shape
-#         smallest_side = min(rows, cols)
-
-#         # rescale the image so the smallest side is min_side
-#         scale = self.min_side / smallest_side
-#         print(f'scale = {scale}')
-
-#         # check if the largest side is now greater than max_side, which can happen
-#         # when images have a large aspect ratio
-#         largest_side = max(rows, cols)
-
-#         if largest_side * scale > self.max_side:
-#             scale = self.max_side / largest_side
-
-#         # resize the image with the computed scale
-#         image = skimage.transform.resize(image, (int(round(rows*scale)), int(round((cols*scale)))))
-#         rows, cols, cns = image.shape
-
-#         #pad_w = self.base_size - rows%self.base_size
-#         #pad_h = self.base_size - cols%self.base_size
-
-#         pad_w = (self.base_size - rows%self.base_size)%self.base_size
-#         pad_h = (self.base_size - cols%self.base_size)%self.base_size
-
-#         new_image = np.zeros((rows + pad_w, cols + pad_h, cns)).astype(np.float32)
-#         new_image[:rows, :cols, :] = image.astype(np.float32)
-#         # print(new_image.shape)
-
-#         if not self.inference_mode:
-#             annots[:, :4] *= scale
-#             return {'img': torch.from_numpy(new_image), 'annot': torch.from_numpy(annots), 'scale': scale}
-#         else:
-#             return torch.from_numpy(new_image)
-
-
-
 class Augmenter(object):
     """Convert ndarrays in sample to Tensors."""
-    def __init__(self, use_flip = True, flip_theta=0.5, 
+    def __init__(self, use_flip = True, flip_theta=0.5,
                        use_noise = True, noise_theta=0.8, noise_range=2.0/255.0,
-                       use_brightness = True, brightness_theta=0.8, brightness_range=0.25, 
+                       use_brightness = True, brightness_theta=0.8, brightness_range=0.25,
                        use_scale = True, scale_theta=0.5, scale_max=1.0, scale_min=0.8, scale_stride=0.05,
                        **kwargs):
         self.use_flip = use_flip
@@ -922,7 +789,7 @@ class Augmenter(object):
 
             x1 = annots[:, 0].copy()
             x2 = annots[:, 2].copy()
-            
+
             x_tmp = x1.copy()
 
             annots[:, 0] = cols - x2
@@ -941,7 +808,7 @@ class Augmenter(object):
             image = np.clip(image, 0.0, 1.0)
             #gauss = np.random.normal(mean,sigma,(row,col,ch))
             #gauss = gauss.reshape(row,col,ch)
-        
+ 
         if self.use_scale and np.random.rand() < self.scale_theta:
             random_scale = random.sample(self.scale_candidate, 1)[0]
             row, col, _ = image.shape
@@ -955,6 +822,84 @@ class Augmenter(object):
         sample = {'img': image, 'annot': annots}
 
         return sample
+
+
+class Resizer(object):
+    """Convert ndarrays in sample to Tensors."""
+    def __init__(self, height=608, width=1024, 
+                    min_side=608, max_side=1024, base_size=32, 
+                    inference_mode=False, resize_mode=0, **kwargs):
+        self.height, self.width = height, width
+        self.min_side, self.max_side = min_side, max_side
+        self.base_size = base_size
+        self.inference_mode = inference_mode
+        self.resize_mode = resize_mode
+
+        if 'logger' in kwargs:
+            kwargs['logger'].info('Resizer.Height  : {}'.format(self.height))
+            kwargs['logger'].info('Resizer.Width   : {}'.format(self.width))
+
+    def __call__(self, sample):
+        if not self.inference_mode:
+            image, annots = sample['img'], sample['annot']
+        else: 
+            image = sample
+        rows, cols, cns = image.shape
+        # print(image.shape)
+
+        if self.resize_mode == 0:
+            new_image = skimage.transform.resize(image, (self.height, self.width))
+            new_image = new_image.astype(np.float32)
+            # smallest_side = min(rows, cols)
+
+            # # rescale the image so the smallest side is min_side
+            # scale = self.min_side / smallest_side
+
+            # # check if the largest side is now greater than max_side, which can happen
+            # # when images have a large aspect ratio
+            # largest_side = max(rows, cols)
+
+            # if largest_side * scale > self.max_side:
+            #     scale = self.max_side / largest_side
+
+            # # resize the image with the computed scale
+            # image = skimage.transform.resize(image, (int(round(rows*scale)), int(round((cols*scale)))))
+            # rows, cols, cns = image.shape
+
+            # pad_w = (self.base_size - rows%self.base_size)%self.base_size
+            # pad_h = (self.base_size - cols%self.base_size)%self.base_size
+
+            # new_image = np.zeros((rows + pad_w, cols + pad_h, cns)).astype(np.float32)
+            # new_image[:rows, :cols, :] = image.astype(np.float32)
+        elif self.resize_mode == 1:
+            h_scale = self.height / rows
+            w_scale = self.width  / cols 
+            scale = min(h_scale, w_scale)
+            # print(f'resize scale = {scale}')
+
+            # resize the image with the computed scale
+            image = skimage.transform.resize(image, (int(round(rows*scale)), int(round((cols*scale)))))
+            rows, cols, cns = image.shape
+
+            #pad_w = (self.base_size - rows%self.base_size)%self.base_size
+            #pad_h = (self.base_size - cols%self.base_size)%self.base_size
+
+            pad_h = (self.base_size - self.height%self.base_size)%self.base_size
+            pad_w = (self.base_size - self.width%self.base_size)%self.base_size
+
+            new_image = np.zeros((self.height + pad_h, self.width + pad_w, cns)).astype(np.float32)
+            # print(new_image.shape)
+            new_image[:rows, :cols, :] = image.astype(np.float32)
+        else:
+            print('Error resize mode.')
+            return None
+
+        if not self.inference_mode:
+            annots[:, :4] *= scale
+            # return {'img': torch.from_numpy(new_image), 'annot': torch.from_numpy(annots), 'scale': scale}
+            return {'img': new_image, 'annot': annots, 'scale': scale}
+        else:
+            return new_image
 
 
 class Normalizer(object):
@@ -972,11 +917,26 @@ class Normalizer(object):
 
     def __call__(self, sample):
         if not self.inference_mode:
-            image, annots = sample['img'], sample['annot']
-            return {'img':((image.astype(np.float32)-self.mean)/self.std), 'annot': annots}
+            image, annots, scale = sample['img'], sample['annot'], sample['scale']
+            return {'img':((image.astype(np.float32)-self.mean)/self.std), 'annot': annots, 'scale': scale}
         else:
             image = sample
             return (image.astype(np.float32)-self.mean)/self.std
+
+
+class ToTorchTensor(object):
+
+    def __init__(self, inference_mode=False, **kwargs):
+        self.inference_mode = inference_mode
+
+    def __call__(self, sample):
+        if not self.inference_mode:
+            image, annots, scale = sample['img'], sample['annot'], sample['scale']
+            return {'img': torch.from_numpy(image), 'annot': torch.from_numpy(annots), 'scale': scale}
+        else:
+            image = sample
+            return {'img': torch.from_numpy(image)}
+
 
 class UnNormalizer(object):
     def __init__(self, mean=None, std=None):
@@ -1027,3 +987,55 @@ class AspectRatioBasedSampler(Sampler):
 
         # divide into groups, one group = one batch
         return [[order[x % len(order)] for x in range(i, i + self.batch_size)] for i in range(0, len(order), self.batch_size)]
+
+### Old Code
+# class Resizer(object):
+#     """Convert ndarrays in sample to Tensors."""
+#     def __init__(self, min_side=608, max_side=1024, base_size=32, inference_mode=False, **kwargs):
+#         self.min_side  = min_side
+#         self.max_side  = max_side
+#         self.base_size = base_size
+#         self.inference_mode = inference_mode
+
+#         if 'logger' in kwargs:
+#             kwargs['logger'].info('Resizer.Min_Side   : {}'.format(self.min_side))
+#             kwargs['logger'].info('Resizer.Max_Side   : {}'.format(self.max_side))
+
+#     def __call__(self, sample):
+#         if not self.inference_mode:
+#             image, annots = sample['img'], sample['annot']
+#         else: 
+#             image = sample
+#         rows, cols, cns = image.shape
+#         smallest_side = min(rows, cols)
+
+#         # rescale the image so the smallest side is min_side
+#         scale = self.min_side / smallest_side
+#         print(f'scale = {scale}')
+
+#         # check if the largest side is now greater than max_side, which can happen
+#         # when images have a large aspect ratio
+#         largest_side = max(rows, cols)
+
+#         if largest_side * scale > self.max_side:
+#             scale = self.max_side / largest_side
+
+#         # resize the image with the computed scale
+#         image = skimage.transform.resize(image, (int(round(rows*scale)), int(round((cols*scale)))))
+#         rows, cols, cns = image.shape
+
+#         #pad_w = self.base_size - rows%self.base_size
+#         #pad_h = self.base_size - cols%self.base_size
+
+#         pad_w = (self.base_size - rows%self.base_size)%self.base_size
+#         pad_h = (self.base_size - cols%self.base_size)%self.base_size
+
+#         new_image = np.zeros((rows + pad_w, cols + pad_h, cns)).astype(np.float32)
+#         new_image[:rows, :cols, :] = image.astype(np.float32)
+#         # print(new_image.shape)
+
+#         if not self.inference_mode:
+#             annots[:, :4] *= scale
+#             return {'img': torch.from_numpy(new_image), 'annot': torch.from_numpy(annots), 'scale': scale}
+#         else:
+#             return torch.from_numpy(new_image)

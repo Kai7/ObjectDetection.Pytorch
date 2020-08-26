@@ -1,4 +1,5 @@
 import argparse
+import json
 import yaml
 import collections
 import numpy as np
@@ -6,20 +7,17 @@ import torch
 import torch.optim as optim
 from torchvision import transforms
 from architectures import retinanet, efficientdet
-# from architectures import ksevendet
 from ksevendet.architecture import ksevendet
 import ksevendet.architecture.backbone.registry as registry
-# from architectures.backbone import shufflenetv2, densenet, mnasnet, mobilenet
+from ksevendet.ksevenpruner import KSevenPruner
 from datasettool.dataloader import KSevenDataset, CocoDataset, FLIRDataset, collater, \
                                    Resizer, AspectRatioBasedSampler, Augmenter, \
-                                   Normalizer
+                                   Normalizer, ToTorchTensor
 from torch.utils.data import DataLoader
 from datasettool import coco_eval
 from datasettool.flir_eval import evaluate_flir
 from datasettool.coco_eval import evaluate_coco
-from datasettool.cvidata_eval import coco_evaluate_cvidata
 from datasettool.ksevendata_eval import coco_evaluate_ksevendata
-from datasettool import csv_eval
 
 from utils.utils import replace_w_sync_bn, CustomDataParallel, get_last_weights, init_weights
 
@@ -35,6 +33,8 @@ assert torch.__version__.split('.')[0] == '1'
 
 print('CUDA available: {}'.format(torch.cuda.is_available()))
 
+KSEVEN_MODEL = 'ksevendet'
+
 def get_args():
     parser = argparse.ArgumentParser(description='Simple training script for training a object detection network.')
     
@@ -45,12 +45,12 @@ def get_args():
                         help='Dataset type, must be one of kseven, coco, flir')
     parser.add_argument('--model_config', default='', type=str, metavar='FILE',
                         help='YAML config file specifying default arguments')
-    parser.add_argument('--architecture', default='ksevendet', type=str,
-                        help='Network Architecture.')
-    parser.add_argument('--backbone', default='resnet', type=str,
-                        help='KSevenDet backbone.')
-    parser.add_argument('--neck', default='fpn', type=str,
-                        help='KSevenDet neck.')
+    parser.add_argument('--tensor_dependency', default=None, type=str,
+                        help='Tensor pruning dependency json file path.')
+    parser.add_argument('--pruning_rate', default=0.0, type=float,
+                        help='Uniform pruning rate.')
+    parser.add_argument('--pruning_config', default=None, type=str,
+                        help='Special pruning config path.')
     parser.add_argument('--resume', default=None, type=str,
                         help='Checkpoint state_dict file to resume training from')
     parser.add_argument('--batch_size', default=16, type=int,
@@ -79,142 +79,103 @@ def get_args():
                         help="Only run validation.")
 
     args = parser.parse_args()
+
+    assert args.dataset, 'dataset must provide'
+
     if args.model_config:
         with open(args.model_config, 'r') as f:
             model_cfg = yaml.safe_load(f)
         setattr(args, 'architecture', model_cfg.pop('architecture'))
         setattr(args, 'model_cfg', model_cfg)
-    # print(model_cfg)
-    # pdb.set_trace()
-        
+
+    support_architectures = [
+        KSEVEN_MODEL,
+    ]
+    # support_architectures += [f'efficientdet-d{i}' for i in range(8)]
+    # support_architectures += [f'retinanet-res{i}' for i in [18, 34, 50, 101, 152]]
+    print("Support Architectures:")
+    print(support_architectures)
+
+    if args.architecture == KSEVEN_MODEL:
+        model_cfg = args.model_cfg
+        if model_cfg.get('variant'):
+            network_name = f'{args.architecture}-{args.model_cfg["variant"]}-{args.model_cfg["neck"]}'
+        else:
+            assert isinstance(model_cfg, dict)
+            network_name = f'{args.architecture}-{args.model_cfg["backbone"]}_specifical-{args.model_cfg["neck"]}'
+    else:
+        raise ValueError('Architecture {} is not support.'.format(args.architecture))
+    args.network_name = network_name
+
+    tensor_pruning_dependency = None
+    eq_tensors_ids = None
+    if args.tensor_dependency is not None:
+        try:
+            tensor_pruning_dependency = json.load(open(args.tensor_dependency))
+            eq_tensors_ids = list(tensor_pruning_dependency.keys())
+            eq_tensors_ids.sort()
+        except FileNotFoundError:
+            print('[WARNNING] Tensor Dependency File not found.')
+    
+    if args.pruning_rate > 0:
+        assert tensor_pruning_dependency is not None, 'tensor_pruning_dependency must be not None.'
+        pruning_tensor_cfg = list()
+        for eq_t_id in eq_tensors_ids:
+            pruning_args = {
+                'pruning_type': 'random',
+                'pruning_rate': args.pruning_rate,
+            }
+            pruning_tensor_cfg.append([eq_t_id, pruning_args])
+        cfg_name='px{}_uniform'.format(100-int(args.pruning_rate * 100))
+    elif args.pruning_config is not None:
+        # TODO: Support pruning config
+        assert 0, 'not support now'
+        pruning_tensor_cfg = list() 
+        cfg_name=''
+    else:
+        pruning_tensor_cfg = None
+        cfg_name=''
+    args.tensor_pruning_dependency = tensor_pruning_dependency
+    args.pruning_tensor_cfg = pruning_tensor_cfg
+    args.cfg_name = cfg_name
+
+    height, width = _shape_1, _shape_2 = tuple(map(int, args.input_shape.split(',')))
+    args.height = height
+    args.width  = width
 
     return args
 
-def get_logger(name='My Logger', args=None):
-    LOGGING_FORMAT = '%(levelname)s:    %(message)s'
-    # LOGGING_FORMAT = '%(asctime)s %(levelname)s: %(message)s'
-    # DATE_FORMAT = '%Y%m%d %H:%M:%S'
 
-    my_logger     = logging.getLogger(name)
-    formatter     = logging.Formatter(LOGGING_FORMAT)
-    streamhandler = logging.StreamHandler()
-    streamhandler.setFormatter(formatter)
-    my_logger.addHandler(streamhandler)
-    my_logger.setLevel(logging.INFO)
-    if args is not None and args.log:
-        filehandler = logging.FileHandler(os.path.join('log', '{}_{}.log'.format(args.dataset, args.network_name)), mode='a')
-        filehandler.setFormatter(formatter)
-        my_logger.addHandler(filehandler)
-
-    return my_logger
-
-
-def test(dataset, model, epoch, args, logger=None):
-    logger.info("{} epoch: \t start validation....".format(epoch))
-    # model = model.module
-    if isinstance(model, torch.nn.DataParallel) or isinstance(model, CustomDataParallel):
-        model = model.module
-    model.eval()
-    model.is_training = False
-    with torch.no_grad():
-        if args.dataset_type == 'coco':
-            evaluate_coco(dataset, model)
-        elif args.dataset_type == 'flir':
-            summarize = evaluate_flir(dataset, model)
-            if logger:
-                logger.info('\n{}'.format(summarize))
-        elif args.dataset_type == 'kseven':
-            summarize = coco_evaluate_ksevendata(dataset, model)
-            if logger:
-                logger.info('\n{}'.format(summarize))
-        else:
-            print('ERROR: Unknow dataset.')
-
-
-def main():
+def train():
     args = get_args()
-    assert args.dataset, 'dataset must provide'
-    # pdb.set_trace()
-    default_support_backbones = registry._module_to_models
-    
-    print(f'args.epochs = {args.epochs}')
-    print(f'args.batch_size = {args.batch_size}')
 
-    # write_support_backbones(default_support_backbones)
+    # default_support_backbones = registry._module_to_models
 
-    # BACKBONE = 'shufflenetv2'
-    # VARIANT  = 'shufflenetv2_x0_5'
-    # BACKBONE = 'densenet'
-    # BACKBONE = 'mnasnet'
-    # BACKBONE = 'mobilenetv2'
-    # BACKBONE = 'resnet'
-    # BACKBONE = 'res2net'
-    # BACKBONE = 'sknet'
+    train_logger = get_logger(name='ksevendet_train_logger', args=args)
+    train_logger.info('Network Name: {}'.format(args.network_name))
+    train_logger.info('Dataset Name: {}'.format(args.dataset))
+    train_logger.info('Dataset Root: {}'.format(args.dataset_root))
+    train_logger.info('Dataset Type: {}'.format(args.dataset_type))
+    train_logger.info('Epochs      : {}'.format(args.epochs))
+    train_logger.info('Batch Size  : {}'.format(args.batch_size))
+    train_logger.info('Weight Decay  : {}'.format(args.weight_decay))
+    train_logger.info('Learning Rate : {}'.format(args.lr))
 
-    # NECK = 'fpn'
-    # NECK = 'panet-fpn'
-    NECK = 'bifpn'
-
-    # FPN_FEATURES_NUM = 256
-    FPN_FEATURES_NUM = 64
-
-    support_architectures = [
-        'ksevendet',
-    ]
-    support_architectures += [f'efficientdet-d{i}' for i in range(8)]
-    support_architectures += [f'retinanet-res{i}' for i in [18, 34, 50, 101, 152]]
-
-    support_architectures.append('retinanet-p45p6')
-
-    print(support_architectures)
-
-    if args.architecture == 'ksevendet':
-        # ksevendet_cfg = {
-        #     'backbone'          : BACKBONE,
-        #     'variant'           : VARIANT,
-        #     'neck'              : NECK,
-        #     'fpn_features_num'  : FPN_FEATURES_NUM,
-        #     'backbone_feature_pyramid_levels' : [3, 4, 5],
-        #     'neck_feature_pyramid_levels'     : [3, 4, 5, 6, 7],
-        # }
-        ksevendet_cfg = args.model_cfg
-        if ksevendet_cfg.get('variant'):
-            network_name = f'{args.architecture}-{ksevendet_cfg["variant"]}-{ksevendet_cfg["neck"]}'
-        else:
-            assert isinstance(ksevendet_cfg, dict)
-            network_name = f'{args.architecture}-{ksevendet_cfg["backbone"]}_specifical-{ksevendet_cfg["neck"]}'
-    elif args.architecture in support_architectures:
-        network_name = args.architecture
-    else:
-        raise ValueError('Architecture {} is not support.'.format(args.architecture))
-
-    args.network_name = network_name
-
-    net_logger = get_logger(name='Network Logger', args=args)
-    net_logger.info('Network Name: {}'.format(network_name))
-    net_logger.info('Dataset Name: {}'.format(args.dataset))
-    net_logger.info('Dataset Root: {}'.format(args.dataset_root))
-    net_logger.info('Dataset Type: {}'.format(args.dataset_type))
-
-    _shape_1, _shape_2 = tuple(map(int, args.input_shape.split(',')))
+    #_augmenter  = Augmenter(scale_min=0.9, logger=train_logger)
+    _augmenter  = Augmenter(use_scale=False, scale_min=0.9, logger=train_logger)
+    _resizer = Resizer(height=args.height, width=args.height, resize_mode=args.resize_mode, logger=train_logger)
     _normalizer = Normalizer()
-    #_augmenter  = Augmenter(scale_min=0.9, logger=net_logger)
-    _augmenter  = Augmenter(use_scale=False, scale_min=0.9, logger=net_logger)
-    # exit(0)
-    if args.resize_mode == 0:
-        _resizer = Resizer(min_side=_shape_1, max_side=_shape_2, resize_mode=args.resize_mode, logger=net_logger)
-    elif args.resize_mode == 1:
-        _resizer = Resizer(height=_shape_1, width=_shape_2, resize_mode=args.resize_mode, logger=net_logger)
-    else:
-        raise ValueError('Illegal resize mode.')
+    _totensor = ToTorchTensor()
     transfrom_funcs_train = [
         _augmenter,
-        _normalizer,
         _resizer,
+        _normalizer,
+        _totensor,
     ]
     transfrom_funcs_valid = [
-        _normalizer,
         _resizer,
+        _normalizer,
+        _totensor,
     ]
     # Create the data loaders
     if args.dataset_type == 'kseven':
@@ -226,28 +187,21 @@ def main():
         dataset_valid = CocoDataset(args.dataset_root, set_name='valid', transform=transforms.Compose(transfrom_funcs_valid))
     else:
         raise ValueError('Dataset type not understood (must be FLIR, COCO or csv), exiting.')
-    
+
     dataloader_train = DataLoader(dataset_train,
                                   batch_size=args.batch_size,
                                   num_workers=args.workers,
                                   shuffle=True,
                                   collate_fn=collater,
                                   pin_memory=True)
-    dataloader_valid = DataLoader(dataset_valid,
-                                  batch_size=1,
-                                  num_workers=args.workers,
-                                  shuffle=False,
-                                  collate_fn=collater,
-                                  pin_memory=True)
-    
-    net_logger.info('Number of Classes: {:>3}'.format(dataset_train.num_classes()))
-    # pdb.set_trace()
-    
-    build_param = {'logger': net_logger}
+
+    train_logger.info('Num Classes : {:>2}'.format(dataset_train.num_classes()))
+    train_logger.info('Num Train Images : {:>7}'.format(len(dataset_train)))
+    train_logger.info('Num Valid Images : {:>7}'.format(len(dataset_valid)))
+
+    build_param = {'logger': train_logger}
     if args.architecture == 'ksevendet':
-        net_model = ksevendet.KSevenDet(ksevendet_cfg, num_classes=dataset_train.num_classes(), pretrained=False, **build_param)
-    elif args.architecture == 'retinanet-p45p6':
-        net_model = retinanet.retinanet_p45p6(num_classes=dataset_train.num_classes(), **build_param)
+        net_model = ksevendet.KSevenDet(args.model_cfg, num_classes=dataset_train.num_classes(), pretrained=False, **build_param)
     elif args.architecture.split('-')[0] == 'retinanet':
         net_model = retinanet.build_retinanet(args.architecture, num_classes=dataset_train.num_classes(), pretrained=False, **build_param)
     elif args.architecture.split('-')[0] == 'efficientdet':
@@ -255,31 +209,55 @@ def main():
     else:
         assert 0, 'architecture error'
 
-    # _shape_1, _shape_2 = tuple(map(int, args.input_shape.split(',')))
-    # sample_input = torch.randn(1, 3, _shape_1, _shape_2)
-    # sample_input_shape = dataset_valid[0]['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0).shape
-    # net_model.eval()
-    # model_summaries.model_summary(net_model, 'compute', input_shape=sample_input_shape)
-    # exit(0)
+    use_gpu = True
+    if use_gpu and torch.cuda.is_available():
+        net_model = net_model.cuda()
+
+    # sample_image = np.zeros((args.height, args.width, 3)).astype(np.float32)
+    # sample_image = torch.from_numpy(sample_image)
+    # sample_input = sample_image.permute(2, 0, 1).cuda().float().unsqueeze(dim=0)
+    # sample_input_shape = sample_image.permute(2, 0, 1).cuda().float().unsqueeze(dim=0).shape
+    # # the following statement is unnecessary.
+    # net_model.set_onnx_convert_info(fixed_size=(height, width))
+
+    net_pruner = KSevenPruner(net_model, input_shape=(args.height, args.width, 3), 
+                              tensor_pruning_dependency=args.tensor_pruning_dependency, **build_param)
+
+    if args.pruning_tensor_cfg is not None:
+        assert args.cfg_name, 'cfg_name must be given.'
+        assert args.tensor_pruning_dependency, 'tensor_pruning_dependency must be given.'
+
+        # if args.tensor_pruning_dependency is None:
+        #     DUMP_TENSOR_PRUNING_DEPENDENCY = True
+        #     TENSOR_PRUNING_DEPENDENCY_JSON_PATH = \
+        #         os.path.join('model_pruning_config', '{}_tensor_pruning_dependency.json'.format(args.network_name))
+        #     args.tensor_pruning_dependency = net_pruner.gen_tensor_pruning_dependency(
+        #                                          dump_json=DUMP_TENSOR_PRUNING_DEPENDENCY,
+        #                                          dump_json_path=TENSOR_PRUNING_DEPENDENCY_JSON_PATH)
+        eq_tensors_ids = list(args.tensor_pruning_dependency.keys())
+        eq_tensors_ids.sort()
+
+        train_logger.info('Start Pruning.')
+        net_pruner.prune(args.pruning_tensor_cfg)
+        train_logger.info('Pruning Complete.')
 
     # load last weights
     if args.resume is not None:
-        net_logger.info('Loading Weights from Checkpoint : {}'.format(args.resume))
+        train_logger.info('Loading Weights from Checkpoint : {}'.format(args.resume))
         try:
             ret = net_model.load_state_dict(torch.load(args.resume), strict=False)
         except RuntimeError as e:
-            net_logger.warning(f'Ignoring {e}')
-            net_logger.warning(f'Don\'t panic if you see this, this might be because you load a pretrained weights with different number of classes. The rest of the weights should be loaded already.')
+            train_logger.warning(f'Ignoring {e}')
+            train_logger.warning('Don\'t panic if you see this,')
+            train_logger.warning('  this might be because you load a pretrained weights with different number of classes.')
+            train_logger.warning('The rest of the weights should be loaded already.')
 
         s_b = args.resume.rindex('_')
         s_e = args.resume.rindex('.')
         start_epoch = int(args.resume[s_b+1:s_e]) + 1
-        net_logger.info('Continue on {} Epoch'.format(start_epoch))
+        train_logger.info('Continue on {} Epoch'.format(start_epoch))
     else:
         start_epoch = 1
-        # print('[Info] initializing weights...')
-        # exit(0)
-        # init_weights(net_model)
         
     ## for EfficientDet 
     ## freeze backbone if train head_only
@@ -290,10 +268,8 @@ def main():
     #            if ntl in classname:
     #                for param in m.parameters():
     #                    param.requires_grad = False
-
     #    model.apply(freeze_backbone)
     #    print('[Info] freezed backbone')
-
 
     # https://github.com/vacancy/Synchronized-BatchNorm-PyTorch
     # apply sync_bn when using multiple gpu and batch_size per gpu is lower than 4
@@ -305,13 +281,10 @@ def main():
     #if args.num_gpus > 1 and args.batch_size // args.num_gpus < 4:
     #    net_model.apply(replace_w_sync_bn)
 
-
     #if args.num_gpus > 0:
     #    net_model = net_model.cuda()
     #    if args.num_gpus > 1:
     #        net_model = CustomDataParallel(net_model, args.num_gpus)
-
-
 
     #if args.num_gpus > 0 and torch.cuda.is_available():
     #    net_model = net_model.cuda()
@@ -320,20 +293,12 @@ def main():
     #    net_model = torch.nn.DataParallel(net_model).cuda()
 
 
-    use_gpu = True
-    if use_gpu:
-        if torch.cuda.is_available():
-            net_model = net_model.cuda()
-
     if torch.cuda.is_available():
         net_model = torch.nn.DataParallel(net_model).cuda()
     else:
         net_model = torch.nn.DataParallel(net_model)
 
     net_model.training = True
-
-    net_logger.info('Weight Decay  : {}'.format(args.weight_decay))
-    net_logger.info('Learning Rate : {}'.format(args.lr))
 
     if args.optim == 'adamw':
         optimizer = optim.AdamW(net_model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -342,44 +307,36 @@ def main():
     elif args.optim == 'adagrad':
         optimizer = optim.Adagrad(net_model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     elif args.optim == 'sgd':
-        optimizer = torch.optim.SGD(net_model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=0.9, nesterov=True)
+        optimizer = optim.SGD(net_model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=0.9, nesterov=True)
     else:
         raise ValueError(f'Unknown optimizer type {args.optim}')
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
 
-
     loss_hist = collections.deque(maxlen=500)
 
     net_model.train()
+
     if isinstance(net_model, torch.nn.DataParallel):
         net_model.module.freeze_bn()
     else:
         net_model.freeze_bn()
 
-    net_logger.info('Num Training Images: {}'.format(len(dataset_train)))
-
-    #dummy_input = torch.randn(1, 3, _shape_1, _shape_2, device='cuda')
-    #out = net_model(dummy_input, return_head=True)
-    #print('Done')
-    #exit(0)
-
     if args.validation_only:
         net_model.eval()
-        test(dataset_valid, net_model, start_epoch - 1, args, net_logger)
+        test(dataset_valid, net_model, start_epoch - 1, args, train_logger)
         print('Validation Done.')
         exit(0)
 
     for epoch_num in range(start_epoch, start_epoch + args.epochs):
+        if start_epoch != 1:
+            test(dataset_valid, net_model, epoch_num, args, train_logger)
+
         net_model.train()
         if isinstance(net_model, torch.nn.DataParallel):
             net_model.module.freeze_bn()
         else:
             net_model.freeze_bn()
-        #net_model.module.freeze_bn()
-        #net_model.eval()
-        #test(dataset_valid, net_model, epoch_num, args, net_logger)
-        #exit(0)
 
         epoch_loss = []
         for iter_num, data in enumerate(dataloader_train):
@@ -397,13 +354,6 @@ def main():
                     annot = annot.cuda()
                 classification_loss, regression_loss = net_model(imgs, annot, return_loss=True)
 
-                #if torch.cuda.is_available():
-                #    #classification_loss, regression_loss = net_model([data['img'].cuda().float(), data['annot']])
-                #    classification_loss, regression_loss = net_model(data['img'].cuda().float(), data['annot'].cuda())
-                #else:
-                #    #classification_loss, regression_loss = net_model([data['img'].float(), data['annot']])
-                #    classification_loss, regression_loss = net_model(data['img'].float(), data['annot'])
-                    
                 classification_loss = classification_loss.mean()
                 regression_loss = regression_loss.mean()
                 loss = classification_loss + regression_loss
@@ -421,39 +371,36 @@ def main():
                 if epoch_num == 0 and (iter_num % 10 == 0):
                     _log = 'Epoch: {:>3} | Iter: {:>4} | Class loss: {:1.5f} | BBox loss: {:1.5f} | Running loss: {:1.5f}'.format(
                             epoch_num, iter_num, float(classification_loss), float(regression_loss), np.mean(loss_hist))
-                    net_logger.info(_log)
+                    train_logger.info(_log)
                 elif(iter_num % 100 == 0):
                     _log = 'Epoch: {:>3} | Iter: {:>4} | Class loss: {:1.5f} | BBox loss: {:1.5f} | Running loss: {:1.5f}'.format(
                             epoch_num, iter_num, float(classification_loss), float(regression_loss), np.mean(loss_hist))
-                    net_logger.info(_log)
+                    train_logger.info(_log)
 
                 del classification_loss
                 del regression_loss
             except Exception as e:
                 raise Exception
-                #print(e)
-                #continue
 
-
-        # if (epoch_num + 1) % 1 == 0:
-        #if (epoch_num + 1) % args.valid_period == 0:
         if epoch_num % args.valid_period == 0:
-            test(dataset_valid, net_model, epoch_num, args, net_logger)
-
+            test(dataset_valid, net_model, epoch_num, args, train_logger)
 
         scheduler.step(np.mean(epoch_loss))
-        print('Learning Rate:', str(scheduler._last_lr))
-        save_checkpoint(net_model, os.path.join(
-                        'saved', '{}_{}_{}.pt'.format(args.dataset, network_name, epoch_num)))
+        # print('Learning Rate:', str(scheduler._last_lr))
+        save_checkpoint(net_model, os.path.join('saved', '{}_{}{}_{}.pt'.format(
+                                                args.dataset, args.network_name,
+                                                '_' + args.cfg_name if args.cfg_name else '', epoch_num)))
 
-    net_logger.info('Training Complete.')
+    train_logger.info('Training Complete.')
 
-    net_model.eval()
-    test(dataset_valid, net_model, epoch_num, args, net_logger)
+    # net_model.eval()
+    test(dataset_valid, net_model, epoch_num, args, train_logger)
 
-    save_checkpoint(net_model, os.path.join(
-               'saved', '{}_{}_final_{}.pt'.format(args.dataset, network_name, epoch_num)))
-    # torch.save(net_model.module.state_dict(), 'model_final.pt')
+    # save_checkpoint(net_model, os.path.join(
+    #            'saved', '{}_{}_final_{}.pt'.format(args.dataset, network_name, epoch_num)))
+    save_checkpoint(net_model, os.path.join('saved', '{}_{}{}_final_{}.pt'.format(
+                                            args.dataset, args.network_name,
+                                            '_' + args.cfg_name if args.cfg_name else '', epoch_num)))
 
 
 def save_checkpoint(model, save_path):
@@ -463,6 +410,49 @@ def save_checkpoint(model, save_path):
     else:
         print('model is Not DataParallel')
         torch.save(model.state_dict(), save_path)
+
+
+def get_logger(name='My Logger', args=None):
+    LOGGING_FORMAT = '%(levelname)s:    %(message)s'
+    # LOGGING_FORMAT = '%(asctime)s %(levelname)s: %(message)s'
+    # DATE_FORMAT = '%Y%m%d %H:%M:%S'
+
+    my_logger     = logging.getLogger(name)
+    formatter     = logging.Formatter(LOGGING_FORMAT)
+    streamhandler = logging.StreamHandler()
+    streamhandler.setFormatter(formatter)
+    my_logger.addHandler(streamhandler)
+    my_logger.setLevel(logging.INFO)
+    if args is not None and args.log:
+        # filehandler = logging.FileHandler(os.path.join('log', '{}_{}.log'.format(args.dataset, args.network_name)), mode='a')
+        filehandler = logging.FileHandler(os.path.join('log', '{}_{}{}.log'.format(
+                                                       args.dataset, args.network_name,
+                                                       '_' + args.cfg_name if args.cfg_name else '')), mode='a')
+        filehandler.setFormatter(formatter)
+        my_logger.addHandler(filehandler)
+
+    return my_logger
+
+
+def test(dataset, model, epoch, args, logger=None):
+    logger.info("{} epoch: \t start validation....".format(epoch))
+    if isinstance(model, torch.nn.DataParallel) or isinstance(model, CustomDataParallel):
+        model = model.module
+    model.eval()
+    model.is_training = False
+    with torch.no_grad():
+        if args.dataset_type == 'coco':
+            evaluate_coco(dataset, model)
+        elif args.dataset_type == 'flir':
+            summarize = evaluate_flir(dataset, model)
+            if logger:
+                logger.info('\n{}'.format(summarize))
+        elif args.dataset_type == 'kseven':
+            summarize = coco_evaluate_ksevendata(dataset, model)
+            if logger:
+                logger.info('\n{}'.format(summarize))
+        else:
+            print('ERROR: Unknow dataset.')
 
 
 def write_support_backbones(support_backbones):
@@ -483,4 +473,6 @@ def write_support_backbones(support_backbones):
     print('done')
 
 if __name__ == '__main__':
-    main()
+    train()
+
+    print('\ndone')

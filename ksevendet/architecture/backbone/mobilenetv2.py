@@ -191,8 +191,8 @@ class MobileNetV2(nn.Module):
             return ret
         else:
             x = self.conv(x)
-            x = self.global_pool(x)
-            x = x.view(-1, 1280)
+            x = self.global_pool(x).flatten(1)
+            # x = x.view(-1, 1280)
             x = self.classifier(x)
             return x
 

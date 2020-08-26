@@ -251,6 +251,7 @@ class KSevenDet(nn.Module):
             regression = self.regressor(neck_features)
             classification = self.classifier(neck_features)
         else:
+            assert 0, 'not use'
             regression = torch.cat([self.regressor(_feature) for _feature in neck_features], dim=1)
             classification = torch.cat([self.classifier(_feature) for _feature in neck_features], dim=1)
 
@@ -305,16 +306,14 @@ class KSevenDet(nn.Module):
 
         pyramid_sizes = list()
         h, w = self.fixed_size
-        for s in self.anchors.strides:
-            _fixed_size = ( int(h/s), int(w/s) ) 
+        #for s in self.anchors.strides:
+        #    _fixed_size = ( int(h/s), int(w/s) ) 
+        #    pyramid_sizes.append(_fixed_size)
+        for p in self.neck_feature_pyramid_levels:
+            _stride =  2**p
+            # print(f'stride [{p}] : {_stride}')
+            _fixed_size = (int(h/_stride), int(w/_stride))
             pyramid_sizes.append(_fixed_size)
-        #if self.build_config['neck'] == 'bifpn':
-        #    for m in self.neck:
-        #        m.convert_onnx = True
-        #        m.pyramid_sizes = pyramid_sizes
-        #else:
-        #    self.neck.convert_onnx = True
-        #    self.neck.pyramid_sizes = pyramid_sizes
         self.neck.set_onnx_convert_info(pyramid_sizes)
         self.regressor.convert_onnx = True
         self.classifier.convert_onnx = True

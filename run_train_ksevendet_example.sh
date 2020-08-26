@@ -21,17 +21,29 @@ KSDET_MODEL_PATH="/data_host/trans/pytorch/ksevendet_models"
 INPUT_SHAPE="512,640"
 #INPUT_SHAPE="320,384"
 
+
+TENSOR_PRUNING_DEPENDENCY_JSON_FILE='tensor_pruning_info/ksevendet-resnet18-bifpn-sh_tensor_pruning_dependency.json'
 #MODEL_CONFIG="config/model/ksevendet_resnet.yaml"
 MODEL_CONFIG="config/model/ksevendet_resnet_bifpn.yaml"
+PRUNING_RATE=0.0
+
+
+#TENSOR_PRUNING_DEPENDENCY_JSON_FILE='ksevennet-mobilenetv2_100_tensor_pruning_dependency.json'
 #MODEL_CONFIG="config/model_3s-thermal-face/ksevendet_resnet.yaml"
 #MODEL_CONFIG="config/model_3s-thermal-face/ksevendet_resnet_bifpn.yaml"
-BATCH_SIZE=16
-#BATCH_SIZE=24
+#PRUNING_RATE=0.0
+
+
+
+#BATCH_SIZE=16
+BATCH_SIZE=24
 DATASET_ROOT="${DATASET_ROOT_BASE}/${DATASET_BASE_NAME}"
 python train_ksevendet.py --log --dataset ${DATASET_NAME} \
     --dataset_root $DATASET_ROOT \
     --dataset_type $DATASET_TYPE \
     --model_config $MODEL_CONFIG \
+    --tensor_dependency $TENSOR_PRUNING_DEPENDENCY_JSON_FILE \
+    --pruning_rate $PRUNING_RATE \
     --learning_rate 0.0001 \
     --weight_decay 0.00005 \
     --batch_size $BATCH_SIZE \

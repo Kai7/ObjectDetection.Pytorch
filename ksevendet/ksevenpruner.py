@@ -65,7 +65,8 @@ class KSevenPruner(object):
         hook_handles = []
         with torch.no_grad():
             net_model.apply(module_recorder)
-            net_model(sample_input, return_head=True)
+            # net_model(sample_input, return_head=True)
+            net_model(sample_input)
 
             # Unregister from the forward hooks
             for handle in hook_handles:
@@ -92,7 +93,8 @@ class KSevenPruner(object):
     
     def gen_tensor_pruning_dependency(self, dump_json=False, 
                                       dump_json_path='tensor_pruning_dependency.json'):
-        g = self.gen_summary_graph()
+        # g = self.gen_summary_graph()
+        g = self.gen_summary_graph(write_image=True)
 
         IGNORE_OP_TYPE = ['Constant',]
         INPUT_TENSOR_ID = 'input.1'
@@ -143,6 +145,8 @@ class KSevenPruner(object):
                 assert in_node is not None, 'tensor node not found.'
                 _node.in_tensor.add(in_node)
                 in_node.out_op.add(_node)
+            if len(op_info['outputs']) != 1:
+                pdb.set_trace()
             assert len(op_info['outputs']) == 1, 'op output num error'
             for t_id in op_info['outputs']:
                 out_node = tensor_nodes.get(t_id, None)
@@ -278,7 +282,7 @@ class KSevenPruner(object):
             hook_handles = []
             with torch.no_grad():
                 self.net_model.apply(module_printer)
-                self.net_model(sample_input, return_head=True)
+                self.net_model(sample_input)
 
                 # Unregister from the forward hooks
                 for handle in hook_handles:
@@ -311,6 +315,10 @@ def prune_conv_filter(module_name, conv_module, pruning_type='random',
         # pdb.set_trace()
         return 
     
+    ''' torch.nn.Conv2d.weight
+    self.weight = Parameter(torch.Tensor(
+                            out_channels, in_channels // groups, *kernel_size))
+    '''
     if conv_module.groups == filter_num:
         # Case: depthwise separable convolution
         conv_module.groups = filter_num - pruning_num
@@ -460,7 +468,7 @@ def generate_equivalence_tensor_map(ops_type_map, op_nodes, tensor_nodes):
     eq_tensors_map = dict()
     eq_tensors_map_inverse = collections.defaultdict(set) 
 
-    eq_ops_type = ['Add', 'Relu', 'Clip', 'BatchNormalization', 
+    eq_ops_type = ['Add', 'Mul', 'Relu', 'Clip', 'Sigmoid', 'BatchNormalization', 
                    'MaxPool', 'GlobalAveragePool', 'Upsample', 'Flatten', 'Conv']
     for _type in eq_ops_type:
         equivalence_tensor_at_op(_type, ops_type_map[_type], op_nodes, tensor_nodes, 
@@ -501,12 +509,17 @@ def generate_equivalence_tensor_map(ops_type_map, op_nodes, tensor_nodes):
 def equivalence_tensor_at_op(op_type, ops, op_nodes, tensor_nodes, 
                              equivalence_shape_tensors_map, equivalence_shape_tensors_map_inverse):
     print('merge op: {}'.format(op_type))
-    assert op_type in ['Add', 'Relu', 'Clip', 'BatchNormalization', 
+    # TODO:
+    #   check: Mul op (In SEModule, mul is equivalence tensor op)
+    assert op_type in ['Add', 'Mul', 'Relu', 'Clip', 'Sigmoid', 'BatchNormalization', 
                        'MaxPool', 'GlobalAveragePool', 'Upsample', 'Flatten', 'Conv']
     for _op in ops:
         if op_type == 'Add':
             assert len(_op['outputs']) == 1, 'op output num error'
-        elif op_type in ['Relu', 'Clip']:
+        elif op_type == 'Mul':
+            assert len(_op['inputs']) == 2, 'op input num error'
+            assert len(_op['outputs']) == 1, 'op output num error'
+        elif op_type in ['Relu', 'Clip', 'Sigmoid']:
             assert len(_op['inputs']) == 1, 'op input num error'
             assert len(_op['outputs']) == 1, 'op output num error'
         elif op_type == 'BatchNormalization':
@@ -531,7 +544,7 @@ def equivalence_tensor_at_op(op_type, ops, op_nodes, tensor_nodes,
         else:
             assert 0, 'Op type error.'
         
-        if op_type == 'Add':
+        if op_type in ['Add', 'Mul']:
             in_t_ids = _op['inputs']
             out_t_ids = [_op['outputs'][0],]
         else:

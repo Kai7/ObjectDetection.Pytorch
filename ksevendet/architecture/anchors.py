@@ -22,7 +22,8 @@ class Anchors(nn.Module):
         self.scales  = np.array([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)]) if scales is None else np.array(scales)
 
         # print('Anchors Sizes =', self.sizes)
-        if 'logger' in kwargs:
+        logger = kwargs.get('logger', None)
+        if logger:
             kwargs['logger'].info('Anchors Sizes   : [ {} ]'.format(
                                   ', '.join(['{:>4}'.format(int(ss)) for ss in self.sizes])))
             kwargs['logger'].info('Anchors Scales  : [ {} ]'.format(
