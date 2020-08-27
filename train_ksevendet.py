@@ -99,7 +99,10 @@ def get_args():
     if args.architecture == KSEVEN_MODEL:
         model_cfg = args.model_cfg
         if model_cfg.get('variant'):
-            network_name = f'{args.architecture}-{args.model_cfg["variant"]}-{args.model_cfg["neck"]}'
+            backbone_ = model_cfg['variant']
+            neck_ = model_cfg['neck']
+            head_ = model_cfg['head']
+            network_name = f'{args.architecture}-{backbone_}-{neck_}-{head_}'
         else:
             assert isinstance(model_cfg, dict)
             network_name = f'{args.architecture}-{args.model_cfg["backbone"]}_specifical-{args.model_cfg["neck"]}'
@@ -116,7 +119,7 @@ def get_args():
             eq_tensors_ids.sort()
         except FileNotFoundError:
             print('[WARNNING] Tensor Dependency File not found.')
-    
+
     if args.pruning_rate > 0:
         assert tensor_pruning_dependency is not None, 'tensor_pruning_dependency must be not None.'
         pruning_tensor_cfg = list()
@@ -163,7 +166,7 @@ def train():
 
     #_augmenter  = Augmenter(scale_min=0.9, logger=train_logger)
     _augmenter  = Augmenter(use_scale=False, scale_min=0.9, logger=train_logger)
-    _resizer = Resizer(height=args.height, width=args.height, resize_mode=args.resize_mode, logger=train_logger)
+    _resizer = Resizer(height=args.height, width=args.width, resize_mode=args.resize_mode, logger=train_logger)
     _normalizer = Normalizer()
     _totensor = ToTorchTensor()
     transfrom_funcs_train = [
@@ -298,6 +301,12 @@ def train():
     else:
         net_model = torch.nn.DataParallel(net_model)
 
+    if args.validation_only:
+        net_model.eval()
+        test(dataset_valid, net_model, start_epoch - 1, args, train_logger)
+        print('Validation Done.')
+        exit(0)
+
     net_model.training = True
 
     if args.optim == 'adamw':
@@ -321,12 +330,6 @@ def train():
         net_model.module.freeze_bn()
     else:
         net_model.freeze_bn()
-
-    if args.validation_only:
-        net_model.eval()
-        test(dataset_valid, net_model, start_epoch - 1, args, train_logger)
-        print('Validation Done.')
-        exit(0)
 
     for epoch_num in range(start_epoch, start_epoch + args.epochs):
         if start_epoch != 1:

@@ -828,7 +828,7 @@ class Resizer(object):
     """Convert ndarrays in sample to Tensors."""
     def __init__(self, height=608, width=1024, 
                     min_side=608, max_side=1024, base_size=32, 
-                    inference_mode=False, resize_mode=0, **kwargs):
+                    inference_mode=False, resize_mode=1, **kwargs):
         self.height, self.width = height, width
         self.min_side, self.max_side = min_side, max_side
         self.base_size = base_size
@@ -934,8 +934,8 @@ class ToTorchTensor(object):
             image, annots, scale = sample['img'], sample['annot'], sample['scale']
             return {'img': torch.from_numpy(image), 'annot': torch.from_numpy(annots), 'scale': scale}
         else:
-            image = sample
-            return {'img': torch.from_numpy(image)}
+            image = sample.astype(np.float32)
+            return torch.from_numpy(image)
 
 
 class UnNormalizer(object):
